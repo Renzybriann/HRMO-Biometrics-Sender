@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { readData, writeData, getOfficePDFs, generateId } from './store';
+import { getOffices, getSettings, getOfficePDFs, addLog, generateId } from './store';
 import { sendBiometricsEmail } from './mailer';
 
 let schedulerStarted = false;
@@ -8,18 +8,20 @@ export async function sendToAllOffices(): Promise<{
   sent: number;
   failed: number;
 }> {
-  const data = readData();
+  const [allOffices, { emailTemplate, autoSendEnabled }] = await Promise.all([
+    getOffices(),
+    getSettings(),
+  ]);
+
   let sent = 0;
   let failed = 0;
 
-  const template = data.emailTemplate;
-
-  for (const office of data.offices) {
-    const pdfPaths = getOfficePDFs(office.name);
+  for (const office of allOffices) {
+    const pdfPaths = await getOfficePDFs(office.name);
     const emailList = office.emails.join(', ');
 
     if (pdfPaths.length === 0) {
-      data.logs.unshift({
+      await addLog({
         id: generateId(),
         officeId: office.id,
         officeName: office.name,
@@ -38,10 +40,10 @@ export async function sendToAllOffices(): Promise<{
         to: office.emails,
         officeName: office.name,
         pdfPaths,
-        template,
+        template: emailTemplate,
       });
 
-      data.logs.unshift({
+      await addLog({
         id: generateId(),
         officeId: office.id,
         officeName: office.name,
@@ -52,7 +54,7 @@ export async function sendToAllOffices(): Promise<{
       });
       sent++;
     } catch (err) {
-      data.logs.unshift({
+      await addLog({
         id: generateId(),
         officeId: office.id,
         officeName: office.name,
@@ -66,10 +68,6 @@ export async function sendToAllOffices(): Promise<{
     }
   }
 
-  // Keep only last 100 logs
-  data.logs = data.logs.slice(0, 100);
-  writeData(data);
-
   return { sent, failed };
 }
 
@@ -79,8 +77,8 @@ export function startScheduler(): void {
 
   // Runs at 8:00 AM on the 15th of every month
   cron.schedule('0 8 15 * *', async () => {
-    const data = readData();
-    if (!data.autoSendEnabled) return;
+    const { autoSendEnabled } = await getSettings();
+    if (!autoSendEnabled) return;
     console.log('[Scheduler] Running scheduled biometrics send...');
     const result = await sendToAllOffices();
     console.log(`[Scheduler] Done. Sent: ${result.sent}, Failed: ${result.failed}`);
