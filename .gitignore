@@ -1,0 +1,39 @@
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# Production build
+/build
+uploads/
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables (CRITICAL - never commit secrets)
+.env*
+!.env.example
+
+# Vercel / deployment
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Testing
+coverage/
+
+# Misc
+*.pem
+.cache

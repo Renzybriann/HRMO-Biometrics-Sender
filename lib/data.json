@@ -1,0 +1,400 @@
+{
+  "offices": [
+    {
+      "id": "bjv0y2uomoqw5qak",
+      "name": "BAC",
+      "emails": [
+        "bacpinamalayan@yahoo.com"
+      ],
+      "createdAt": "2026-05-04T07:42:01.820Z"
+    },
+    {
+      "id": "0sjdch3cmorxi4d0",
+      "name": "BPLO",
+      "emails": [
+        "bplopinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T01:07:25.716Z"
+    },
+    {
+      "id": "4i1vxkr2mos2rq2m",
+      "name": "HRMO",
+      "emails": [
+        "hrmo@pinamalayan.gov.ph"
+      ],
+      "createdAt": "2026-05-05T03:34:51.838Z"
+    },
+    {
+      "id": "lb7eleu6mos2sq9g",
+      "name": "LEDIPU",
+      "emails": [
+        "pinamalayanledipo.2022@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:35:38.740Z"
+    },
+    {
+      "id": "n141ybiamos2syp9",
+      "name": "MACCO",
+      "emails": [
+        "maccopinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:35:49.677Z"
+    },
+    {
+      "id": "77g5rjonmos2th0j",
+      "name": "MADO",
+      "emails": [
+        "adminoffice@pinamalayan.gov.ph",
+        "madopinamalayan2021@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:36:13.411Z"
+    },
+    {
+      "id": "4uxobayomos2u8el",
+      "name": "MAGO",
+      "emails": [
+        "danny_villacrusis@yahoo.com",
+        "theaaguilaagillon@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:36:48.909Z"
+    },
+    {
+      "id": "teumwic5mos2uwwd",
+      "name": "MASSO",
+      "emails": [
+        "assessorsoffice620@gmail.com",
+        "masso.lgupinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:37:20.653Z"
+    },
+    {
+      "id": "wehqwv5dmos2v8kn",
+      "name": "MBO",
+      "emails": [
+        "pinamalayanbudgetoffice@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:37:35.783Z"
+    },
+    {
+      "id": "72awq56ymos2vi2p",
+      "name": "MCRO",
+      "emails": [
+        "civilregistrar@pinamalayan.gov.ph",
+        "mcrpinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:37:48.097Z"
+    },
+    {
+      "id": "h58m66w8mos2vwh4",
+      "name": "MDRRMO",
+      "emails": [
+        "mdrrmo@pinamalayan.gov.ph",
+        "pinamalayan.mdrrmo@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:38:06.760Z"
+    },
+    {
+      "id": "v71ybfgtmos2w6sw",
+      "name": "MENRO",
+      "emails": [
+        "menrmd.pinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:38:20.144Z"
+    },
+    {
+      "id": "pudbyptbmos2x359",
+      "name": "MEO",
+      "emails": [
+        "meopina2023@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:39:02.061Z"
+    },
+    {
+      "id": "ayurlnfxmos2xd9t",
+      "name": "MHO",
+      "emails": [
+        "pinamalayanrhu@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:39:15.185Z"
+    },
+    {
+      "id": "6fqkpgcamos2xtag",
+      "name": "MO",
+      "emails": [
+        "atienzajasper.802@gmail.com",
+        "dilgpinamalayan@gmail.com",
+        "drmerhan14@gmail.com",
+        "espelimbergozedrick23@gmail.com",
+        "fieljhon1997@gmail.com",
+        "mayrenfaa67@gmail.com",
+        "melessajoylayron@gmail.com",
+        "mercadomariell184@gmail.com",
+        "olivarzxylo@gmail.com",
+        "oscapinamalayan12@gmail.com",
+        "tech4edpinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:39:35.944Z"
+    },
+    {
+      "id": "3uaafktmmos30bri",
+      "name": "MOD",
+      "emails": [
+        "marketoffice@pinamalayan.gov.ph"
+      ],
+      "createdAt": "2026-05-05T03:41:33.198Z"
+    },
+    {
+      "id": "fabz3v0ymos30n2b",
+      "name": "MPD",
+      "emails": [
+        "motorpooldivision285@gmail.com",
+        "patrickcarmona624@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:41:47.843Z"
+    },
+    {
+      "id": "p65h3ohdmos30wk6",
+      "name": "MPDO",
+      "emails": [
+        "mpdo@pinamalayan.gov.ph"
+      ],
+      "createdAt": "2026-05-05T03:42:00.150Z"
+    },
+    {
+      "id": "78ptolijmos31etq",
+      "name": "MSWDO",
+      "emails": [
+        "lgupinamalayanmswdo@gmail.com",
+        "montonangelica111@gmail.com",
+        "mswdo@pinamalayan.gov.ph"
+      ],
+      "createdAt": "2026-05-05T03:42:23.822Z"
+    },
+    {
+      "id": "hnqwoqe6mos32oav",
+      "name": "MTO",
+      "emails": [
+        "treasureroffice@pinamalayan.gov.ph",
+        "treasuryoffice.pinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:43:22.759Z"
+    },
+    {
+      "id": "6nvqpup9mos3342h",
+      "name": "OVM/SB",
+      "emails": [
+        "karl.briones312@gmail.com",
+        "maifippgirls@gmail.com",
+        "vicemayorsoffice@pinamalayan.gov.ph"
+      ],
+      "createdAt": "2026-05-05T03:43:43.193Z"
+    },
+    {
+      "id": "g0krtr11mos359he",
+      "name": "SCO",
+      "emails": [
+        "sco@pinamalayan.gov.ph",
+        "pesopinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:45:23.522Z"
+    },
+    {
+      "id": "m9g0n8htmos35qv6",
+      "name": "SOD",
+      "emails": [
+        "slaughterhouseod@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:45:46.050Z"
+    },
+    {
+      "id": "c999cbo5mos35uwh",
+      "name": "THDD",
+      "emails": [
+        "pinamalayantourism@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:45:51.281Z"
+    },
+    {
+      "id": "l4cj3hihmos369pv",
+      "name": "ZD",
+      "emails": [
+        "patrickcarmona624@gmail.com",
+        "zoningoffice@pinamalayan.gov.ph",
+        "zoningdivisionpinamalayan@gmail.com"
+      ],
+      "createdAt": "2026-05-05T03:46:10.483Z"
+    }
+  ],
+  "logs": [
+    {
+      "id": "7aieg18mmorya9ok",
+      "officeId": "3ndn5tg6moqyiau8",
+      "officeName": "Human Resource Management Office",
+      "email": "youngrenzybrian@gmail.com",
+      "sentAt": "2026-05-05T01:29:18.980Z",
+      "status": "success",
+      "filesCount": 1
+    },
+    {
+      "id": "xxfk0izemory85cu",
+      "officeId": "3ndn5tg6moqyiau8",
+      "officeName": "Human Resource Management Office",
+      "email": "youngrenzybrian@gmail.com",
+      "sentAt": "2026-05-05T01:27:40.062Z",
+      "status": "success",
+      "filesCount": 1
+    },
+    {
+      "id": "8ylteg9amorw53uw",
+      "officeId": "gq4af1l6morvieyp",
+      "officeName": "General Services Office",
+      "email": "youngrenzybrian@gmail.com, matiasrenzbrian@gmail.com, wixgamer10@gmail.com",
+      "sentAt": "2026-05-05T00:29:18.920Z",
+      "status": "success",
+      "filesCount": 2
+    },
+    {
+      "id": "nwkjfbefmorvzioz",
+      "officeId": "gq4af1l6morvieyp",
+      "officeName": "General Services Office",
+      "email": "youngrenzybrian@gmail.com, matiasrenzbrian@gmail.com, wixgamer10@gmail.com",
+      "sentAt": "2026-05-05T00:24:58.211Z",
+      "status": "failed",
+      "filesCount": 2,
+      "error": "Cannot read properties of undefined (reading 'subject')"
+    },
+    {
+      "id": "zgxc1765morvwqs6",
+      "officeId": "gq4af1l6morvieyp",
+      "officeName": "General Services Office",
+      "email": "youngrenzybrian@gmail.com, matiasrenzbrian@gmail.com, wixgamer10@gmail.com",
+      "sentAt": "2026-05-05T00:22:48.726Z",
+      "status": "failed",
+      "filesCount": 2,
+      "error": "Cannot read properties of undefined (reading 'subject')"
+    },
+    {
+      "id": "owzl9r95moqyjaky",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:48:33.874Z",
+      "status": "success",
+      "filesCount": 2
+    },
+    {
+      "id": "x14tjz9pmoqycenx",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:43:12.573Z",
+      "status": "success",
+      "filesCount": 1
+    },
+    {
+      "id": "f7at157smoqxempd",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:16:56.689Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "u6u8ya4gmoqx8fmn",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:12:07.583Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "gudb7pvnmoqx0t7z",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:06:11.951Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "0qauk56emoqww9g9",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:02:39.705Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "w5k3gpremoqwsz1y",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T08:00:06.262Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "w5013cowmoqwmixm",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Test",
+      "email": "matiasrenzbrian@gmail.com",
+      "sentAt": "2026-05-04T07:55:05.434Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "vs3n7nqbmoqwghm0",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Human Resource Management Office",
+      "email": "matiasrenzbrian@gmail.com, youngrenzybrian@gmail.com",
+      "sentAt": "2026-05-04T07:50:23.784Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "4sfk6r0rmoqw927s",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Human Resource Management Office",
+      "email": "matiasrenzbrian@gmail.com, youngrenzybrian@gmail.com",
+      "sentAt": "2026-05-04T07:44:37.240Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    },
+    {
+      "id": "jqzoxhvfmoqw5zn3",
+      "officeId": "bjv0y2uomoqw5qak",
+      "officeName": "Human Resource Management Office",
+      "email": "matiasrenzbrian@gmail.com, youngrenzybrian@gmail.com",
+      "sentAt": "2026-05-04T07:42:13.935Z",
+      "status": "failed",
+      "filesCount": 0,
+      "error": "No PDF files uploaded for this office"
+    },
+    {
+      "id": "wlzuicz7moqup0ab",
+      "officeId": "mqz51kvdmoqulk1d",
+      "officeName": "Human Resource Management Office",
+      "email": "brian@gmail.com",
+      "sentAt": "2026-05-04T07:01:02.003Z",
+      "status": "failed",
+      "filesCount": 1,
+      "error": "queryA ETIMEOUT smtp.gmail.com"
+    }
+  ],
+  "autoSendEnabled": false,
+  "emailTemplate": {
+    "subject": "Biometrics Report – {{month}} | {{officeName}}",
+    "body": "*select and download **your office attendance* attached in this mail for encoding at the Daily Time Record of your personnel.Everyone is also reminded that submission of DTRs and its required attachments within 3 working days after the end of each pay period (/i.e/., 18th day of the month for pay period 1-15, and 3rd day of the month for pay period 16-31)..\n\n--\nThank you very much. Please acknowledge receipt.\n\n\n**HUMAN RESOURCE MANAGEMENT OFFICE**\n**MUNICIPAL GOVERNMENT OF PINAMALAYAN**  \nMGP Complex, Madrid Blvd., Zone III, \nPinamalayan, Oriental Mindoro 5208\n(043) 738-9454\nhrmo.mgop@gmail.com\nOfficial FB Page: HRMOPinamalayan\nOfficial FB Acc: PinamalayanHRMO\n\nCONFIDENTIALITY NOTICE\n\n*This email, including any attachments, is intended  only for the use of the addressee/s. It  may contain confidential or privileged information, including personal and security information, which should not be used or disclosed without proper authorization. If you received this email in error, contact the sender immediately and permanently delete it from your system. Unless otherwise indicated, the contents of this email do not necessarily reflect the views of the sender. *"
+  }
+}
