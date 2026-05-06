@@ -403,7 +403,6 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
 
   // Bulk controls
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showAllAttachments, setShowAllAttachments] = useState(false);
   const [openPdfs, setOpenPdfs] = useState<Set<string>>(new Set());
   const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
   const allCollapsed = offices.length > 0 && collapsedCards.size === offices.length;
@@ -415,22 +414,16 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
     setPdfMap(p => ({ ...p, [id]: d.files || [] }));
   };
 
+  // Auto-fetch PDFs for ALL offices on mount
+
   useEffect(() => {
-    if (showAllAttachments) {
-      // Only show attachments when expanded
-      const expanded = offices.filter(o => !collapsedCards.has(o.id));
-      expanded.forEach(o => { if (!pdfMap[o.id]) fetchPDFs(o.id); });
-      setOpenPdfs(new Set(expanded.map(o => o.id)));
-    } else {
-      setOpenPdfs(new Set());
-    }
-  }, [showAllAttachments]);
+    offices.forEach(o => fetchPDFs(o.id));
+  }, [offices.length]);
 
   const togglePdf = async (id: string) => {
     const next = new Set(openPdfs);
     if (next.has(id)) { next.delete(id); } else { next.add(id); if (!pdfMap[id]) await fetchPDFs(id); }
     setOpenPdfs(next);
-    setShowAllAttachments(false);
   };
 
   const toggleCollapse = (id: string) => {
@@ -441,7 +434,7 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
 
   const toggleCollapseAll = () => {
     if (allCollapsed) { setCollapsedCards(new Set()); }
-    else { setCollapsedCards(new Set(offices.map(o => o.id))); setShowAllAttachments(false); }
+    else { setCollapsedCards(new Set(offices.map(o => o.id))); }
   };
 
   const toggleSelect = (id: string) => {
@@ -503,7 +496,6 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
     <div className="fade-up">
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* Select all */}
         <button className="btn btn-ghost btn-sm" onClick={toggleSelectAll} style={{ gap: 6 }}>
           {allSelected ? <CheckSquare size={13} color="var(--blue)" /> : <Square size={13} />}
           {allSelected ? 'Deselect All' : 'Select All'}
@@ -514,10 +506,17 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
           {allCollapsed ? 'Expand All' : 'Collapse All'}
         </button>
 
-        <button className="btn btn-sm" onClick={() => setShowAllAttachments(!showAllAttachments)}
-          title={allCollapsed ? 'Expand all first to see attachments' : ''}
-          style={{ background: showAllAttachments ? 'var(--blue-pale)' : 'var(--gray-100)', color: showAllAttachments ? 'var(--blue)' : 'var(--gray-700)', opacity: allCollapsed ? 0.5 : 1 }}>
-          <Layers size={13} /> {showAllAttachments ? 'Hide All Attachments' : 'Show All Attachments'}
+        {/* replaces the old Show All Attachments button */}
+        <button className="btn btn-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', gap: 6 }}
+          onClick={async () => {
+            if (!confirm('Clear ALL attachments for every office?')) return;
+            const res = await fetch('/api/upload?clearGlobal=true', { method: 'DELETE' });
+            if (res.ok) {
+              offices.forEach(o => fetchPDFs(o.id));
+              showToast('All attachments cleared', 'info');
+            } else showToast('Failed to clear attachments', 'error');
+          }}>
+          <Trash2 size={13} /> Clear All Attachments
         </button>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -531,7 +530,6 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
           </button>
         </div>
       </div>
-
       {/* Selected banner */}
       {selected.size > 0 && (
         <div className="slide-down" style={{ background: 'var(--blue-pale)', border: '1px solid var(--blue)', borderRadius: 8, padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -654,15 +652,39 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
                       </div>
 
                       {/* Attachment indicator */}
-                      <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', gap: 5, fontSize: 11, padding: '4px 8px',
-                        color: pdfsLoaded ? (hasPdfs ? 'var(--blue)' : 'var(--danger)') : 'var(--gray-500)' }}
-                        onClick={() => togglePdf(office.id)}>
-                        <Paperclip size={10} />
-                        {pdfsLoaded
-                          ? hasPdfs ? `${pdfs.length} attachment${pdfs.length > 1 ? 's' : ''}` : '⚠ No attachments'
-                          : '– attachments'}
-                        {isPdfOpen ? <ChevronUp size={10} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={10} style={{ marginLeft: 'auto' }} />}
-                      </button>
+                      {/* Attachment indicator + clear per office */}
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <button className="btn btn-ghost btn-sm" style={{
+                          flex: 1, justifyContent: 'flex-start', gap: 5, fontSize: 11, padding: '4px 8px',
+                          color: pdfsLoaded ? (hasPdfs ? 'var(--blue)' : 'var(--danger)') : 'var(--gray-400)',
+                          fontWeight: pdfsLoaded && !hasPdfs ? 700 : 500,
+                        }} onClick={() => togglePdf(office.id)}>
+                          <Paperclip size={10} />
+                          {pdfsLoaded
+                            ? hasPdfs
+                              ? `${pdfs.length} attachment${pdfs.length > 1 ? 's' : ''}`
+                              : '⚠ No attachments'
+                            : <RefreshCw size={9} className="spin" />}
+                          {isPdfOpen ? <ChevronUp size={10} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={10} style={{ marginLeft: 'auto' }} />}
+                        </button>
+
+                        {/* Per-office clear — only shows if files exist */}
+                        {hasPdfs && (
+                          <button
+                            title="Clear attachments for this office"
+                            className="btn btn-icon btn-sm"
+                            style={{ color: 'var(--danger)', background: 'var(--danger-bg)', flexShrink: 0 }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm(`Clear all attachments for "${office.name}"?`)) return;
+                              const res = await fetch(`/api/upload?officeId=${office.id}&clearOffice=true`, { method: 'DELETE' });
+                              if (res.ok) { await fetchPDFs(office.id); showToast('Attachments cleared', 'info'); }
+                              else showToast('Failed to clear', 'error');
+                            }}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
 
                       {/* Send */}
                       <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 'auto' }}
