@@ -281,3 +281,58 @@ export async function listPDFsWithMeta(officeName: string) {
 function encodeOfficeName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 }
+
+// --- Labels ---
+
+export interface CutoffLabel {
+  id: string;
+  name: string;
+  url: string;
+  year: number;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export async function getLabels(): Promise<CutoffLabel[]> {
+  const { data, error } = await supabase
+    .from('labels')
+    .select('*')
+    .order('year', { ascending: false })
+    .order('sort_order', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data.map((l) => ({
+    id: l.id,
+    name: l.name,
+    url: l.url,
+    year: l.year,
+    sortOrder: l.sort_order,
+    createdAt: l.created_at,
+  }));
+}
+
+export async function addLabel(label: CutoffLabel): Promise<void> {
+  const { error } = await supabase.from('labels').insert({
+    id: label.id,
+    name: label.name,
+    url: label.url,
+    year: label.year,
+    sort_order: label.sortOrder,
+    created_at: label.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateLabel(label: Partial<CutoffLabel> & { id: string }): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (label.name !== undefined) update.name = label.name;
+  if (label.url !== undefined) update.url = label.url;
+  if (label.year !== undefined) update.year = label.year;
+  if (label.sortOrder !== undefined) update.sort_order = label.sortOrder;
+  const { error } = await supabase.from('labels').update(update).eq('id', label.id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteLabel(id: string): Promise<void> {
+  const { error } = await supabase.from('labels').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}

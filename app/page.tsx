@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, X, Edit2, Save, AlertCircle, Paperclip,
   Eye, EyeOff, Shield, Pencil, Info, Minimize2, Maximize2,
   Layers, StopCircle, RotateCcw, Square, CheckSquare, Calendar,
-  BookTemplate, Copy, Trash, BookOpen
+  BookTemplate, Copy, Trash, BookOpen, Link, ExternalLink
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ interface EmailTemplate { id: string; name: string; subject: string; body: strin
 interface SchedulerConfig { enabled: boolean; dayOfMonth: number; hour: number; minute: number; }
 type QueueStatus = 'idle' | 'running' | 'aborted' | 'done';
 interface QueueItem { officeId: string; officeName: string; status: 'pending' | 'sending' | 'sent' | 'failed' | 'retrying'; error?: string; attempt: number; }
+interface CutoffLabel { id: string; name: string; url: string; year: number; sortOrder: number; createdAt: string; } // ← must be here
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (b: number) => b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
@@ -95,14 +97,16 @@ function QueuePanel({ queue, status, countdown, sent, total, onAbort, onClose }:
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
-type Tab = 'offices' | 'templates' | 'scheduler' | 'logs' | 'admin';
+type Tab = 'offices' | 'templates' | 'scheduler' | 'logs' | 'labels' | 'admin';
 function Sidebar({ active, onChange, logCount }: { active: Tab; onChange: (t: Tab) => void; logCount: number }) {
   const items: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'offices', label: 'Offices', icon: <Building2 size={17} /> },
     { id: 'templates', label: 'Templates', icon: <BookOpen size={17} /> },
     { id: 'scheduler', label: 'Scheduler', icon: <Calendar size={17} /> },
     { id: 'logs', label: 'Send History', icon: <Clock size={17} />, badge: logCount },
+    { id: 'labels', label: 'Cutoff Labels', icon: <Link size={17} /> },
     { id: 'admin', label: 'Admin', icon: <Shield size={17} /> },
+   
   ];
   return (
     <aside style={{ width: 220, background: 'var(--navy)', minHeight: '100vh', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
@@ -201,6 +205,7 @@ export default function Dashboard() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [activeTemplateId, setActiveTemplateId] = useState('default');
   const [scheduler, setScheduler] = useState<SchedulerConfig>({ enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
+  const [labels, setLabels] = useState<CutoffLabel[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -219,14 +224,15 @@ export default function Dashboard() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [offRes, setRes] = await Promise.all([fetch('/api/offices'), fetch('/api/settings')]);
-      const [offData, setData] = await Promise.all([offRes.json(), setRes.json()]);
+      const [offRes, setRes, labRes] = await Promise.all([fetch('/api/offices'), fetch('/api/settings'), fetch('/api/labels'),]);
+      const [offData, setData, labData] = await Promise.all([offRes.json(), setRes.json(), labRes.json(),]);
       setOffices(offData);
       setLogs(setData.logs || []);
       setAutoSend(setData.autoSendEnabled);
       setTemplates(setData.templates || []);
       setActiveTemplateId(setData.activeTemplateId || 'default');
       setScheduler(setData.scheduler || { enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
+      setLabels(Array.isArray(labData) ? labData : []);
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, [showToast]);
@@ -286,6 +292,8 @@ export default function Dashboard() {
     await fetchAll();
   };
 
+  
+
   const handleSendOne = async (officeId: string) => {
     setSendingId(officeId);
     try {
@@ -310,7 +318,7 @@ export default function Dashboard() {
   const queueMap = Object.fromEntries(queue.map(q => [q.officeId, q]));
   const activeTemplate = templates.find(t => t.id === activeTemplateId) ?? templates[0];
 
-  const tabTitles: Record<Tab, string> = { offices: 'Office Management', templates: 'Email Templates', scheduler: 'Scheduler', logs: 'Send History', admin: 'Admin' };
+  const tabTitles: Record<Tab, string> = { offices: 'Office Management', templates: 'Email Templates', scheduler: 'Scheduler', logs: 'Send History', labels: 'Cutoff Labels', admin: 'Admin' };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -366,6 +374,7 @@ export default function Dashboard() {
               {tab === 'templates' && <TemplatesTab templates={templates} activeTemplateId={activeTemplateId} setActiveTemplateId={setActiveTemplateId} onRefresh={fetchAll} showToast={showToast} />}
               {tab === 'scheduler' && <SchedulerTab scheduler={scheduler} setScheduler={setScheduler} autoSend={autoSend} onToggleAutoSend={handleToggleAutoSend} showToast={showToast} />}
               {tab === 'logs' && <LogsTab logs={logs} />}
+              {tab === 'labels' && <LabelsTab labels={labels} onRefresh={fetchAll} showToast={showToast} />}
               {tab === 'admin' && <AdminTab showToast={showToast} />}
             </>
           )}
@@ -1024,6 +1033,158 @@ function AdminTab({ showToast }: { showToast: (msg: string, type?: 'success' | '
           <button className="btn btn-ghost" onClick={test} disabled={testing}>{testing ? <RefreshCw size={13} className="spin" /> : <CheckCircle size={13} />} Test Connection</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LabelsTab({ labels, onRefresh, showToast }: {
+  labels: CutoffLabel[];
+  onRefresh: () => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formYear, setFormYear] = useState(new Date().getFullYear());
+  const [saving, setSaving] = useState(false);
+
+  const resetForm = () => { setFormName(''); setFormUrl(''); setFormYear(new Date().getFullYear()); };
+
+  const saveLabel = async (isEdit: boolean) => {
+    if (!formName.trim() || !formUrl.trim()) {
+      showToast('Name and URL are required', 'error'); return;
+    }
+    setSaving(true);
+    const method = isEdit ? 'PUT' : 'POST';
+    const body = isEdit
+      ? { id: editId, name: formName.trim(), url: formUrl.trim(), year: formYear }
+      : { name: formName.trim(), url: formUrl.trim(), year: formYear };
+    const res = await fetch('/api/labels', {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    setSaving(false);
+    if (res.ok) {
+      showToast(isEdit ? 'Label updated' : 'Label added', 'success');
+      setShowAdd(false); setEditId(null); resetForm(); await onRefresh();
+    } else showToast('Failed to save', 'error');
+  };
+
+  const deleteLabel = async (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"?`)) return;
+    await fetch(`/api/labels?id=${id}`, { method: 'DELETE' });
+    showToast('Label deleted', 'info');
+    await onRefresh();
+  };
+
+  // Group labels by year
+  const byYear = labels.reduce<Record<number, CutoffLabel[]>>((acc, l) => {
+    if (!acc[l.year]) acc[l.year] = [];
+    acc[l.year].push(l);
+    return acc;
+  }, {});
+  const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+
+  return (
+    <div className="fade-up">
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+          Quick-access shortcuts to cutoff period tracking links.
+        </p>
+        <button className="btn btn-navy btn-sm" onClick={() => { resetForm(); setShowAdd(true); setEditId(null); }}>
+          <Plus size={13} /> Add Label
+        </button>
+      </div>
+
+      {/* Add / Edit form */}
+      {(showAdd || editId) && (
+        <div className="card slide-down" style={{ padding: 20, marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: 'var(--navy)' }}>
+            {editId ? 'Edit Label' : 'New Cutoff Label'}
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 160px' }}>
+              <label className="label">Label Name</label>
+              <input className="input" value={formName} onChange={e => setFormName(e.target.value)}
+                placeholder="e.g. May 1–15" />
+            </div>
+            <div style={{ flex: '2 1 260px' }}>
+              <label className="label">URL</label>
+              <input className="input" value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                placeholder="https://..." type="url" />
+            </div>
+            <div style={{ flex: '0 0 100px' }}>
+              <label className="label">Year</label>
+              <input className="input" value={formYear} onChange={e => setFormYear(Number(e.target.value))}
+                type="number" min={2020} max={2100} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn btn-primary" onClick={() => saveLabel(!!editId)} disabled={saving}>
+              {saving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />} Save
+            </button>
+            <button className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditId(null); resetForm(); }}>
+              <X size={13} /> Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {labels.length === 0 && !showAdd && (
+        <div className="card" style={{ padding: 60, textAlign: 'center' }}>
+          <Link size={36} style={{ color: 'var(--gray-300)', marginBottom: 12 }} />
+          <div style={{ color: 'var(--gray-500)', fontSize: 14 }}>No cutoff labels yet.</div>
+          <div style={{ color: 'var(--gray-400)', fontSize: 12, marginTop: 4 }}>
+            Add labels to quickly access cutoff period tracking links.
+          </div>
+        </div>
+      )}
+
+      {/* Labels grouped by year */}
+      {years.map(year => (
+        <div key={year} style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--navy)' }}>{year}</div>
+            <div style={{ flex: 1, height: 1, background: 'var(--gray-200)' }} />
+            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{byYear[year].length} label{byYear[year].length !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {byYear[year].map(label => (
+              <div key={label.id} style={{
+                display: 'flex', alignItems: 'center', gap: 0,
+                border: '1.5px solid var(--gray-200)', borderRadius: 8,
+                overflow: 'hidden', background: '#fff',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              }}>
+                {/* Main link button */}
+                <a href={label.url} target="_blank" rel="noreferrer" style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 14px', textDecoration: 'none',
+                  color: 'var(--navy)', fontWeight: 700, fontSize: 13,
+                  background: 'transparent', transition: 'background 0.15s',
+                  borderRight: '1.5px solid var(--gray-200)',
+                }}>
+                  <ExternalLink size={13} color="var(--blue)" />
+                  {label.name}
+                </a>
+                {/* Edit button */}
+                <button
+                  onClick={() => { setEditId(label.id); setFormName(label.name); setFormUrl(label.url); setFormYear(label.year); setShowAdd(false); }}
+                  style={{ padding: '10px 10px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-500)', display: 'flex', borderRight: '1.5px solid var(--gray-200)' }}>
+                  <Edit2 size={12} />
+                </button>
+                {/* Delete button */}
+                <button
+                  onClick={() => deleteLabel(label.id, label.name)}
+                  style={{ padding: '10px 10px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex' }}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))} 
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
