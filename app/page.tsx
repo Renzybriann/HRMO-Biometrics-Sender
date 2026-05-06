@@ -6,131 +6,101 @@ import {
   RefreshCw, CheckCircle, XCircle, Clock, ToggleLeft, ToggleRight,
   ChevronDown, ChevronUp, X, Edit2, Save, AlertCircle, Paperclip,
   Eye, EyeOff, Shield, Pencil, Info, Minimize2, Maximize2,
-  Layers, StopCircle, RotateCcw
+  Layers, StopCircle, RotateCcw, Square, CheckSquare, Calendar,
+  BookTemplate, Copy, Trash, BookOpen
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 interface Office { id: string; name: string; emails: string[]; createdAt: string; }
 interface SendLog { id: string; officeId: string; officeName: string; email: string; sentAt: string; status: 'success' | 'failed'; filesCount: number; error?: string; }
 interface PDFFile { name: string; size: number; uploadedAt: string; }
-interface EmailTemplate { subject: string; body: string; }
+interface EmailTemplate { id: string; name: string; subject: string; body: string; isDefault: boolean; createdAt: string; }
+interface SchedulerConfig { enabled: boolean; dayOfMonth: number; hour: number; minute: number; }
+type QueueStatus = 'idle' | 'running' | 'aborted' | 'done';
+interface QueueItem { officeId: string; officeName: string; status: 'pending' | 'sending' | 'sent' | 'failed' | 'retrying'; error?: string; attempt: number; }
 
-type QueueStatus = 'idle' | 'running' | 'paused' | 'done';
-interface QueueItem {
-  officeId: string;
-  officeName: string;
-  status: 'pending' | 'sending' | 'sent' | 'failed' | 'retrying';
-  error?: string;
-  attempt: number;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (bytes: number) => bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const fmt = (b: number) => b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const pad = (n: number) => String(n).padStart(2, '0');
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Toast ───────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error' | 'info'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
-  const colors = { success: 'var(--success)', error: 'var(--danger)', info: 'var(--blue)' };
+  const bg = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--blue)';
   const Icon = type === 'success' ? CheckCircle : type === 'error' ? XCircle : Info;
   return (
-    <div className="fade-up" style={{
-      position: 'fixed', top: 20, right: 20, zIndex: 9999,
-      background: colors[type], color: '#fff',
-      padding: '12px 18px', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
-      display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 500, maxWidth: 380,
-    }}>
-      <Icon size={16} style={{ flexShrink: 0 }} />
-      <span style={{ flex: 1 }}>{msg}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', padding: 2, display: 'flex' }}><X size={14} /></button>
+    <div className="fade-up" style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, background: bg, color: '#fff', padding: '12px 18px', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 500, maxWidth: 380 }}>
+      <Icon size={16} style={{ flexShrink: 0 }} /><span style={{ flex: 1 }}>{msg}</span>
+      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex' }}><X size={14} /></button>
     </div>
   );
 }
 
-// ─── Queue Progress Panel ─────────────────────────────────────────────────────
-function QueuePanel({ queue, status, countdown, onStop, onClose }: {
+// ─── Queue Panel ─────────────────────────────────────────────────────────────
+function QueuePanel({ queue, status, countdown, sent, total, onAbort, onClose }: {
   queue: QueueItem[]; status: QueueStatus; countdown: number;
-  onStop: () => void; onClose: () => void;
+  sent: number; total: number; onAbort: () => void; onClose: () => void;
 }) {
-  const done = queue.filter(q => q.status === 'sent' || q.status === 'failed').length;
-  const total = queue.length;
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const pct = total === 0 ? 0 : Math.round((sent / total) * 100);
   const next = queue.find(q => q.status === 'pending');
-
-  const statusColors: Record<string, string> = {
-    pending: 'var(--gray-300)', sending: 'var(--blue)',
-    retrying: 'var(--warning)', sent: 'var(--success)', failed: 'var(--danger)',
-  };
-  const statusLabels: Record<string, string> = {
-    pending: 'Pending', sending: 'Sending...', retrying: 'Retrying',
-    sent: 'Sent ✓', failed: 'Failed ✗',
-  };
+  const qColors: Record<string, string> = { pending: 'var(--gray-300)', sending: 'var(--blue)', retrying: 'var(--warning)', sent: 'var(--success)', failed: 'var(--danger)' };
+  const qLabels: Record<string, string> = { pending: 'Pending', sending: 'Sending…', retrying: 'Retrying', sent: 'Sent ✓', failed: 'Failed ✗' };
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 24, right: 24, zIndex: 9998,
-      width: 360, background: '#fff', borderRadius: 'var(--radius)',
-      boxShadow: 'var(--shadow-lg)', border: '1px solid var(--gray-200)', overflow: 'hidden',
-    }}>
+    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9998, width: 380, background: '#fff', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--gray-200)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ background: 'var(--navy)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
         {status === 'running' && <RefreshCw size={14} color="var(--yellow)" className="spin" />}
         {status === 'done' && <CheckCircle size={14} color="#6ee7b7" />}
-        {status === 'paused' && <StopCircle size={14} color="#fca5a5" />}
+        {status === 'aborted' && <StopCircle size={14} color="#fca5a5" />}
         <span style={{ flex: 1, color: '#fff', fontWeight: 700, fontSize: 13 }}>
-          {status === 'running' ? 'Sending Queue' : status === 'done' ? 'Queue Complete' : 'Queue Stopped'}
+          {status === 'running' ? 'Sending Queue' : status === 'done' ? 'Complete' : 'Aborted'}
         </span>
-        <span style={{ color: 'var(--yellow)', fontSize: 12, fontWeight: 700 }}>{done}/{total}</span>
-        {(status === 'done' || status === 'paused') && (
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', marginLeft: 4 }}><X size={14} /></button>
-        )}
+        <span style={{ color: 'var(--yellow)', fontSize: 12, fontWeight: 800 }}>{sent}/{total}</span>
+        {(status === 'done' || status === 'aborted') && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', marginLeft: 6 }}><X size={14} /></button>}
       </div>
+
       {/* Progress bar */}
-      <div style={{ height: 4, background: 'var(--gray-100)' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: 'var(--blue)', transition: 'width 0.4s ease' }} />
+      <div style={{ background: 'var(--gray-100)', height: 6 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: status === 'aborted' ? 'var(--danger)' : 'var(--blue)', transition: 'width 0.4s ease' }} />
       </div>
-      {/* Queue items */}
-      <div style={{ maxHeight: 220, overflowY: 'auto', padding: '6px 0' }}>
+      <div style={{ padding: '4px 16px 0', display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--gray-500)' }}>
+        <span>{pct}% complete</span><span>{sent} of {total} sent</span>
+      </div>
+
+      {/* Items */}
+      <div style={{ maxHeight: 200, overflowY: 'auto', margin: '6px 0' }}>
         {queue.map(item => (
-          <div key={item.officeId} style={{ padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--gray-100)' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColors[item.status], flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--navy)' }}>{item.officeName}</span>
-            {(item.status === 'sending' || item.status === 'retrying') && <RefreshCw size={11} color="var(--blue)" className="spin" />}
-            <span style={{ fontSize: 11, color: statusColors[item.status], fontWeight: 600 }}>{statusLabels[item.status]}</span>
+          <div key={item.officeId} style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--gray-100)' }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: qColors[item.status], flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.officeName}</span>
+            {(item.status === 'sending' || item.status === 'retrying') && <RefreshCw size={10} color="var(--blue)" className="spin" />}
+            <span style={{ fontSize: 11, color: qColors[item.status], fontWeight: 600, flexShrink: 0 }}>{qLabels[item.status]}</span>
           </div>
         ))}
       </div>
+
       {/* Footer */}
       <div style={{ padding: '10px 16px', borderTop: '1px solid var(--gray-100)', background: 'var(--gray-50)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        {status === 'running' && countdown > 0 && next && (
-          <span style={{ flex: 1, fontSize: 11, color: 'var(--gray-500)' }}>
-            Next: <strong>{next.officeName}</strong> in {countdown}s
-          </span>
-        )}
-        {status === 'running' && (!next || countdown === 0) && <span style={{ flex: 1, fontSize: 11, color: 'var(--gray-500)' }}>Processing...</span>}
-        {status === 'done' && (
-          <span style={{ flex: 1, fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>
-            ✓ {queue.filter(q => q.status === 'sent').length} sent · {queue.filter(q => q.status === 'failed').length} failed
-          </span>
-        )}
-        {status === 'paused' && <span style={{ flex: 1, fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>Stopped by user</span>}
-        {status === 'running' && (
-          <button className="btn btn-danger btn-sm" onClick={onStop} style={{ fontSize: 11 }}>
-            <StopCircle size={12} /> Stop
-          </button>
-        )}
+        {status === 'running' && countdown > 0 && next && <span style={{ flex: 1, fontSize: 11, color: 'var(--gray-500)' }}>Next: <strong>{next.officeName}</strong> in {countdown}s</span>}
+        {status === 'running' && (!next || countdown === 0) && <span style={{ flex: 1, fontSize: 11, color: 'var(--gray-500)' }}>Processing…</span>}
+        {status === 'done' && <span style={{ flex: 1, fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>✓ {queue.filter(q => q.status === 'sent').length} sent · {queue.filter(q => q.status === 'failed').length} failed</span>}
+        {status === 'aborted' && <span style={{ flex: 1, fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>Aborted — {queue.filter(q => q.status === 'sent').length} already sent</span>}
+        {status === 'running' && <button className="btn btn-danger btn-sm" onClick={onAbort}><StopCircle size={12} /> Abort</button>}
       </div>
     </div>
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
-type Tab = 'offices' | 'template' | 'logs' | 'admin';
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+type Tab = 'offices' | 'templates' | 'scheduler' | 'logs' | 'admin';
 function Sidebar({ active, onChange, logCount }: { active: Tab; onChange: (t: Tab) => void; logCount: number }) {
   const items: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'offices', label: 'Offices', icon: <Building2 size={17} /> },
-    { id: 'template', label: 'Email Template', icon: <Pencil size={17} /> },
+    { id: 'templates', label: 'Templates', icon: <BookOpen size={17} /> },
+    { id: 'scheduler', label: 'Scheduler', icon: <Calendar size={17} /> },
     { id: 'logs', label: 'Send History', icon: <Clock size={17} />, badge: logCount },
     { id: 'admin', label: 'Admin', icon: <Shield size={17} /> },
   ];
@@ -165,35 +135,25 @@ function Sidebar({ active, onChange, logCount }: { active: Tab; onChange: (t: Ta
           </button>
         ))}
       </nav>
-      <div style={{ padding: '16px 20px', color: 'rgba(255,255,255,0.25)', fontSize: 10, letterSpacing: '0.06em' }}>
-        AUTO-SEND: 15th of month · 8AM
-      </div>
     </aside>
   );
 }
 
-// ─── EmailList (must be outside parent to prevent typing bug) ─────────────────
+// ─── Stable sub-components ───────────────────────────────────────────────────
 function EmailList({ emails, onChange }: { emails: string[]; onChange: (v: string[]) => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
       {emails.map((email, i) => (
         <div key={i} style={{ display: 'flex', gap: 6 }}>
-          <input className="input" value={email}
-            onChange={e => { const n = [...emails]; n[i] = e.target.value; onChange(n); }}
-            placeholder={`Gmail address${emails.length > 1 ? ` ${i + 1}` : ''}`} type="email" />
-          {emails.length > 1 && (
-            <button className="btn btn-danger btn-icon" onClick={() => onChange(emails.filter((_, j) => j !== i))}><X size={13} /></button>
-          )}
+          <input className="input" value={email} onChange={e => { const n = [...emails]; n[i] = e.target.value; onChange(n); }} placeholder={`Gmail address${emails.length > 1 ? ` ${i + 1}` : ''}`} type="email" />
+          {emails.length > 1 && <button className="btn btn-danger btn-icon" onClick={() => onChange(emails.filter((_, j) => j !== i))}><X size={13} /></button>}
         </div>
       ))}
-      <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', gap: 4 }} onClick={() => onChange([...emails, ''])}>
-        <Plus size={12} /> Add email
-      </button>
+      <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', gap: 4 }} onClick={() => onChange([...emails, ''])}><Plus size={12} /> Add email</button>
     </div>
   );
 }
 
-// ─── DragDropPanel ────────────────────────────────────────────────────────────
 function DragDropPanel({ officeId, files, uploading, onUpload, onDelete, onClickUpload }: {
   officeId: string; files: PDFFile[]; uploading: boolean;
   onUpload: (id: string, files: FileList) => void;
@@ -203,42 +163,27 @@ function DragDropPanel({ officeId, files, uploading, onUpload, onDelete, onClick
   const [dragging, setDragging] = useState(false);
   return (
     <div className="slide-down" style={{ borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)', padding: '12px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-700)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Files</span>
-        <button className="btn btn-navy btn-sm" style={{ fontSize: 11 }} disabled={uploading} onClick={onClickUpload}>
-          <Upload size={11} /> {uploading ? 'Uploading...' : 'Upload'}
-        </button>
+        <button className="btn btn-navy btn-sm" style={{ fontSize: 11 }} disabled={uploading} onClick={onClickUpload}><Upload size={11} /> {uploading ? 'Uploading…' : 'Upload'}</button>
       </div>
       <div
         onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length > 0) onUpload(officeId, e.dataTransfer.files); }}
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onClick={onClickUpload}
-        style={{
-          border: `2px dashed ${dragging ? 'var(--blue)' : 'var(--gray-200)'}`,
-          borderRadius: 6, padding: files.length === 0 ? '20px 8px' : '8px',
-          textAlign: 'center', background: dragging ? 'var(--blue-pale)' : 'transparent',
-          cursor: 'pointer', transition: 'all 0.15s', marginBottom: files.length > 0 ? 8 : 0,
-        }}
-      >
-        {uploading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--blue)', fontSize: 11 }}><RefreshCw size={13} className="spin" /> Uploading...</div>
-        ) : dragging ? (
-          <div style={{ color: 'var(--blue)', fontSize: 11, fontWeight: 600 }}><Upload size={16} style={{ marginBottom: 4 }} /><div>Drop to upload</div></div>
-        ) : files.length === 0 ? (
-          <div style={{ color: 'var(--gray-500)', fontSize: 11 }}><Upload size={16} style={{ marginBottom: 4, opacity: 0.4 }} /><div>Drag & drop PDFs here</div><div style={{ fontSize: 10, marginTop: 2, color: 'var(--gray-300)' }}>or click to browse</div></div>
-        ) : (
-          <div style={{ color: 'var(--gray-300)', fontSize: 10 }}>Drop more PDFs or click to browse</div>
-        )}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onClick={onClickUpload}
+        style={{ border: `2px dashed ${dragging ? 'var(--blue)' : 'var(--gray-200)'}`, borderRadius: 6, padding: files.length === 0 ? '18px 8px' : '6px', textAlign: 'center', background: dragging ? 'var(--blue-pale)' : 'transparent', cursor: 'pointer', transition: 'all 0.15s', marginBottom: files.length > 0 ? 8 : 0 }}>
+        {uploading ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--blue)', fontSize: 11 }}><RefreshCw size={12} className="spin" /> Uploading…</div>
+          : dragging ? <div style={{ color: 'var(--blue)', fontSize: 11, fontWeight: 600 }}><div>Drop to upload</div></div>
+          : files.length === 0 ? <div style={{ color: 'var(--gray-500)', fontSize: 11 }}><Upload size={14} style={{ marginBottom: 4, opacity: 0.4 }} /><div>Drag & drop PDFs</div><div style={{ fontSize: 10, color: 'var(--gray-300)' }}>or click to browse</div></div>
+          : <div style={{ color: 'var(--gray-300)', fontSize: 10 }}>Drop more or click to browse</div>}
       </div>
       {files.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {files.map(file => (
-            <div key={file.name} style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FileText size={13} color="var(--danger)" style={{ flexShrink: 0 }} />
+            <div key={file.name} style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 5, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 7 }}>
+              <FileText size={12} color="var(--danger)" style={{ flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
               <span style={{ fontSize: 10, color: 'var(--gray-300)', flexShrink: 0 }}>{fmt(file.size)}</span>
-              <button className="btn btn-danger btn-icon btn-sm" style={{ padding: 4 }} onClick={() => onDelete(officeId, file.name)}><X size={11} /></button>
+              <button className="btn btn-danger btn-icon btn-sm" style={{ padding: 3 }} onClick={() => onDelete(officeId, file.name)}><X size={11} /></button>
             </div>
           ))}
         </div>
@@ -253,17 +198,20 @@ export default function Dashboard() {
   const [offices, setOffices] = useState<Office[]>([]);
   const [logs, setLogs] = useState<SendLog[]>([]);
   const [autoSend, setAutoSend] = useState(true);
-  const [template, setTemplate] = useState<EmailTemplate>({ subject: '', body: '' });
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [activeTemplateId, setActiveTemplateId] = useState('default');
+  const [scheduler, setScheduler] = useState<SchedulerConfig>({ enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Queue state
+  // Queue
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [queueStatus, setQueueStatus] = useState<QueueStatus>('idle');
   const [countdown, setCountdown] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
+  const [queueSent, setQueueSent] = useState(0);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const stopRef = useRef(false);
+  const abortRef = useRef(false);
   const DELAY_S = 30;
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'success') => setToast({ msg, type }), []);
@@ -276,154 +224,132 @@ export default function Dashboard() {
       setOffices(offData);
       setLogs(setData.logs || []);
       setAutoSend(setData.autoSendEnabled);
-      setTemplate(setData.emailTemplate || { subject: '', body: '' });
+      setTemplates(setData.templates || []);
+      setActiveTemplateId(setData.activeTemplateId || 'default');
+      setScheduler(setData.scheduler || { enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, [showToast]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const runCountdown = async (seconds: number, nextName: string) => {
+  const runCountdown = async (seconds: number) => {
     for (let i = seconds; i > 0; i--) {
-      if (stopRef.current) break;
+      if (abortRef.current) break;
       setCountdown(i);
       await sleep(1000);
     }
     setCountdown(0);
   };
 
-  // Queue-based send all with 30s delay + retry
-  const handleSendAll = async () => {
-    if (offices.length === 0) return;
-    stopRef.current = false;
-    const initial: QueueItem[] = offices.map(o => ({ officeId: o.id, officeName: o.name, status: 'pending', attempt: 0 }));
+  // Queue-based bulk send with selection support
+  const handleSendSelected = async (selectedIds: string[]) => {
+    const targets = offices.filter(o => selectedIds.includes(o.id));
+    if (targets.length === 0) return;
+    abortRef.current = false;
+    const initial: QueueItem[] = targets.map(o => ({ officeId: o.id, officeName: o.name, status: 'pending', attempt: 0 }));
     setQueue(initial);
+    setQueueSent(0);
     setQueueStatus('running');
     setShowQueue(true);
-
     let q = [...initial];
+    let sentSoFar = 0;
 
     for (let i = 0; i < q.length; i++) {
-      if (stopRef.current) { setQueueStatus('paused'); break; }
-
+      if (abortRef.current) { setQueueStatus('aborted'); break; }
       q[i] = { ...q[i], status: 'sending', attempt: 1 };
       setQueue([...q]);
 
-      let success = false;
-      let lastError = '';
-
+      let success = false; let lastError = '';
       for (let attempt = 1; attempt <= 2; attempt++) {
-        if (stopRef.current) break;
+        if (abortRef.current) break;
         try {
           const res = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ officeId: q[i].officeId }) });
           const data = await res.json();
           if (data.failed > 0) throw new Error(data.results?.[0]?.error || 'Send failed');
-          success = true;
-          break;
+          success = true; break;
         } catch (err) {
           lastError = err instanceof Error ? err.message : 'Unknown error';
-          if (attempt < 2 && !stopRef.current) {
-            q[i] = { ...q[i], status: 'retrying', attempt: 2 };
-            setQueue([...q]);
-            await sleep(5000);
-          }
+          if (attempt < 2 && !abortRef.current) { q[i] = { ...q[i], status: 'retrying', attempt: 2 }; setQueue([...q]); await sleep(5000); }
         }
       }
 
       q[i] = { ...q[i], status: success ? 'sent' : 'failed', error: success ? undefined : lastError };
+      if (success) sentSoFar++;
+      setQueueSent(sentSoFar);
       setQueue([...q]);
 
-      // 30s delay between offices, skip after last
-      if (!stopRef.current && i < q.length - 1) {
-        const nextName = q[i + 1]?.officeName ?? '';
-        await runCountdown(DELAY_S, nextName);
-      }
+      if (!abortRef.current && i < q.length - 1) await runCountdown(DELAY_S);
     }
 
-    if (!stopRef.current) setQueueStatus('done');
+    if (!abortRef.current) setQueueStatus('done');
     await fetchAll();
   };
 
-  // Single office send (no queue)
   const handleSendOne = async (officeId: string) => {
     setSendingId(officeId);
     try {
       const res = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ officeId }) });
       const data = await res.json();
       await fetchAll();
-      if (data.failed > 0) showToast(`Failed: ${data.results?.[0]?.error || 'Unknown error'}`, 'error');
-      else showToast('Email sent successfully!', 'success');
-    } catch { showToast('Send failed. Check Admin credentials.', 'error'); }
+      if (data.failed > 0) showToast(`Failed: ${data.results?.[0]?.error || 'Unknown'}`, 'error');
+      else showToast('Email sent!', 'success');
+    } catch { showToast('Send failed. Check Admin.', 'error'); }
     finally { setSendingId(null); }
   };
 
   const handleToggleAutoSend = async () => {
-    const newVal = !autoSend;
-    setAutoSend(newVal);
-    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoSendEnabled: newVal }) });
-    showToast(`Auto-send ${newVal ? 'enabled' : 'disabled'}`, 'info');
+    const v = !autoSend; setAutoSend(v);
+    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoSendEnabled: v }) });
+    showToast(`Auto-send ${v ? 'enabled' : 'disabled'}`, 'info');
   };
 
   const isQueueRunning = queueStatus === 'running';
   const sentCount = logs.filter(l => l.status === 'success').length;
   const failedCount = logs.filter(l => l.status === 'failed').length;
   const queueMap = Object.fromEntries(queue.map(q => [q.officeId, q]));
+  const activeTemplate = templates.find(t => t.id === activeTemplateId) ?? templates[0];
+
+  const tabTitles: Record<Tab, string> = { offices: 'Office Management', templates: 'Email Templates', scheduler: 'Scheduler', logs: 'Send History', admin: 'Admin' };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
-      {showQueue && <QueuePanel queue={queue} status={queueStatus} countdown={countdown} onStop={() => { stopRef.current = true; }} onClose={() => { setShowQueue(false); setQueue([]); setQueueStatus('idle'); }} />}
+      {showQueue && <QueuePanel queue={queue} status={queueStatus} countdown={countdown} sent={queueSent} total={queue.length} onAbort={() => { abortRef.current = true; }} onClose={() => { setShowQueue(false); setQueue([]); setQueueStatus('idle'); setQueueSent(0); }} />}
       <Sidebar active={tab} onChange={setTab} logCount={logs.length} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Top bar */}
         <header style={{ background: '#fff', borderBottom: '1px solid var(--gray-200)', padding: '0 32px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--navy)' }}>
-            {tab === 'offices' ? 'Office Management' : tab === 'template' ? 'Email Template' : tab === 'logs' ? 'Send History' : 'Admin Configuration'}
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button onClick={handleToggleAutoSend} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px',
-              borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--gray-200)',
-              background: autoSend ? 'var(--blue-pale)' : 'var(--gray-100)',
-              cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-              color: autoSend ? 'var(--blue)' : 'var(--gray-500)', transition: 'all 0.15s',
-            }}>
-              {autoSend ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-              Auto-send {autoSend ? 'ON' : 'OFF'}
+          <h1 style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--navy)' }}>{tabTitles[tab]}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={handleToggleAutoSend} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 13px', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--gray-200)', background: autoSend ? 'var(--blue-pale)' : 'var(--gray-100)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: autoSend ? 'var(--blue)' : 'var(--gray-500)', transition: 'all 0.15s' }}>
+              {autoSend ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} Auto-send {autoSend ? 'ON' : 'OFF'}
             </button>
-            {isQueueRunning ? (
-              <button className="btn btn-danger" onClick={() => { stopRef.current = true; }}>
-                <StopCircle size={14} /> Stop Queue
-              </button>
-            ) : (
-              <button className="btn btn-yellow" onClick={handleSendAll} disabled={offices.length === 0}>
-                <Send size={14} /> Send All Now
-              </button>
-            )}
+            {isQueueRunning
+              ? <button className="btn btn-danger btn-sm" onClick={() => { abortRef.current = true; }}><StopCircle size={13} /> Abort</button>
+              : null}
           </div>
         </header>
 
         {/* Stats strip */}
         {tab === 'offices' && (
-          <div style={{ background: 'var(--navy-800)', padding: '14px 32px', display: 'flex', gap: 32, alignItems: 'center' }}>
-            {[
-              { label: 'Total Offices', value: offices.length, color: '#fff' },
-              { label: 'Emails Sent', value: sentCount, color: 'var(--success)' },
-              { label: 'Failed Sends', value: failedCount, color: '#fc8181' },
-            ].map(s => (
-              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</span>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{s.label}</span>
+          <div style={{ background: 'var(--navy-800)', padding: '12px 32px', display: 'flex', gap: 28, alignItems: 'center' }}>
+            {[{ label: 'Offices', value: offices.length, color: '#fff' }, { label: 'Sent', value: sentCount, color: 'var(--success)' }, { label: 'Failed', value: failedCount, color: '#fc8181' }].map(s => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</span>
               </div>
             ))}
             {isQueueRunning && (
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <RefreshCw size={13} color="var(--yellow)" className="spin" />
-                <span style={{ color: 'var(--yellow)', fontSize: 12, fontWeight: 700 }}>
-                  Queue: {queue.filter(q => q.status === 'sent' || q.status === 'failed').length}/{queue.length}
-                </span>
-                <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => setShowQueue(true)}>View</button>
+                <RefreshCw size={12} color="var(--yellow)" className="spin" />
+                <span style={{ color: 'var(--yellow)', fontSize: 12, fontWeight: 700 }}>{queueSent}/{queue.length} sent</span>
+                {/* Inline mini progress */}
+                <div style={{ width: 80, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99 }}>
+                  <div style={{ height: '100%', width: `${queue.length ? (queueSent / queue.length) * 100 : 0}%`, background: 'var(--yellow)', borderRadius: 99, transition: 'width 0.3s' }} />
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => setShowQueue(true)}>View</button>
               </div>
             )}
           </div>
@@ -432,14 +358,15 @@ export default function Dashboard() {
         <main style={{ flex: 1, overflow: 'auto', padding: 32 }}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--gray-500)', gap: 10 }}>
-              <RefreshCw size={18} className="spin" /> Loading...
+              <RefreshCw size={18} className="spin" /> Loading…
             </div>
           ) : (
             <>
-              {tab === 'offices'  && <OfficesTab offices={offices} sendingId={sendingId} queueMap={queueMap} onSendOne={handleSendOne} onRefresh={fetchAll} showToast={showToast} />}
-              {tab === 'template' && <TemplateTab template={template} setTemplate={setTemplate} showToast={showToast} />}
-              {tab === 'logs'     && <LogsTab logs={logs} />}
-              {tab === 'admin'    && <AdminTab showToast={showToast} />}
+              {tab === 'offices' && <OfficesTab offices={offices} sendingId={sendingId} queueMap={queueMap} templates={templates} activeTemplateId={activeTemplateId} onSendOne={handleSendOne} onSendSelected={handleSendSelected} onRefresh={fetchAll} showToast={showToast} />}
+              {tab === 'templates' && <TemplatesTab templates={templates} activeTemplateId={activeTemplateId} setActiveTemplateId={setActiveTemplateId} onRefresh={fetchAll} showToast={showToast} />}
+              {tab === 'scheduler' && <SchedulerTab scheduler={scheduler} setScheduler={setScheduler} autoSend={autoSend} onToggleAutoSend={handleToggleAutoSend} showToast={showToast} />}
+              {tab === 'logs' && <LogsTab logs={logs} />}
+              {tab === 'admin' && <AdminTab showToast={showToast} />}
             </>
           )}
         </main>
@@ -448,11 +375,12 @@ export default function Dashboard() {
   );
 }
 
-// ─── Offices Tab ──────────────────────────────────────────────────────────────
-function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showToast }: {
+// ─── Offices Tab ─────────────────────────────────────────────────────────────
+function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId, onSendOne, onSendSelected, onRefresh, showToast }: {
   offices: Office[]; sendingId: string | null; queueMap: Record<string, QueueItem>;
-  onSendOne: (id: string) => void; onRefresh: () => void;
-  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  templates: EmailTemplate[]; activeTemplateId: string;
+  onSendOne: (id: string) => void; onSendSelected: (ids: string[]) => void;
+  onRefresh: () => void; showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -464,23 +392,26 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
   const fileRef = useRef<HTMLInputElement>(null);
   const activeUploadId = useRef<string>('');
 
-  // Bulk control state
+  // Bulk controls
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAllAttachments, setShowAllAttachments] = useState(false);
   const [openPdfs, setOpenPdfs] = useState<Set<string>>(new Set());
   const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
   const allCollapsed = offices.length > 0 && collapsedCards.size === offices.length;
+  const allSelected = offices.length > 0 && selected.size === offices.length;
 
   const fetchPDFs = async (id: string) => {
     const res = await fetch(`/api/upload?officeId=${id}`);
-    const data = await res.json();
-    setPdfMap(p => ({ ...p, [id]: data.files || [] }));
+    const d = await res.json();
+    setPdfMap(p => ({ ...p, [id]: d.files || [] }));
   };
 
-  // Show/hide all attachments
   useEffect(() => {
     if (showAllAttachments) {
-      offices.forEach(o => { if (!pdfMap[o.id]) fetchPDFs(o.id); });
-      setOpenPdfs(new Set(offices.map(o => o.id)));
+      // Only show attachments when expanded
+      const expanded = offices.filter(o => !collapsedCards.has(o.id));
+      expanded.forEach(o => { if (!pdfMap[o.id]) fetchPDFs(o.id); });
+      setOpenPdfs(new Set(expanded.map(o => o.id)));
     } else {
       setOpenPdfs(new Set());
     }
@@ -490,7 +421,6 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
     const next = new Set(openPdfs);
     if (next.has(id)) { next.delete(id); } else { next.add(id); if (!pdfMap[id]) await fetchPDFs(id); }
     setOpenPdfs(next);
-    // If manually toggling, unsync from global toggle
     setShowAllAttachments(false);
   };
 
@@ -501,8 +431,19 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
   };
 
   const toggleCollapseAll = () => {
-    if (allCollapsed) setCollapsedCards(new Set());
-    else setCollapsedCards(new Set(offices.map(o => o.id)));
+    if (allCollapsed) { setCollapsedCards(new Set()); }
+    else { setCollapsedCards(new Set(offices.map(o => o.id))); setShowAllAttachments(false); }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(offices.map(o => o.id)));
   };
 
   const resetForm = () => { setFormName(''); setFormEmails(['']); setFormError(''); };
@@ -545,48 +486,63 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
     showToast('File removed', 'info');
   };
 
-  const queueStatusColors: Record<string, string> = {
-    pending: 'var(--gray-300)', sending: 'var(--blue)',
-    retrying: 'var(--warning)', sent: 'var(--success)', failed: 'var(--danger)',
-  };
+  const qColors: Record<string, string> = { pending: 'var(--gray-300)', sending: 'var(--blue)', retrying: 'var(--warning)', sent: 'var(--success)', failed: 'var(--danger)' };
+
+  const selectedIds = Array.from(selected);
 
   return (
     <div className="fade-up">
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Select all */}
+        <button className="btn btn-ghost btn-sm" onClick={toggleSelectAll} style={{ gap: 6 }}>
+          {allSelected ? <CheckSquare size={13} color="var(--blue)" /> : <Square size={13} />}
+          {allSelected ? 'Deselect All' : 'Select All'}
+        </button>
+
         <button className="btn btn-ghost btn-sm" onClick={toggleCollapseAll}>
           {allCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
           {allCollapsed ? 'Expand All' : 'Collapse All'}
         </button>
+
         <button className="btn btn-sm" onClick={() => setShowAllAttachments(!showAllAttachments)}
-          style={{ background: showAllAttachments ? 'var(--blue-pale)' : 'var(--gray-100)', color: showAllAttachments ? 'var(--blue)' : 'var(--gray-700)' }}>
-          <Layers size={13} />
-          {showAllAttachments ? 'Hide All Attachments' : 'Show All Attachments'}
+          title={allCollapsed ? 'Expand all first to see attachments' : ''}
+          style={{ background: showAllAttachments ? 'var(--blue-pale)' : 'var(--gray-100)', color: showAllAttachments ? 'var(--blue)' : 'var(--gray-700)', opacity: allCollapsed ? 0.5 : 1 }}>
+          <Layers size={13} /> {showAllAttachments ? 'Hide All Attachments' : 'Show All Attachments'}
         </button>
-        <div style={{ marginLeft: 'auto' }}>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {selected.size > 0 && (
+            <button className="btn btn-yellow btn-sm" onClick={() => onSendSelected(selectedIds)}>
+              <Send size={13} /> Send Selected ({selected.size})
+            </button>
+          )}
           <button className="btn btn-navy btn-sm" onClick={() => { resetForm(); setShowAdd(true); setEditId(null); }}>
             <Plus size={13} /> Add Office
           </button>
         </div>
       </div>
 
+      {/* Selected banner */}
+      {selected.size > 0 && (
+        <div className="slide-down" style={{ background: 'var(--blue-pale)', border: '1px solid var(--blue)', borderRadius: 8, padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CheckSquare size={14} color="var(--blue)" />
+          <span style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600 }}>{selected.size} office{selected.size > 1 ? 's' : ''} selected</span>
+          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}><X size={12} /> Clear</button>
+        </div>
+      )}
+
       {/* Add form */}
       {showAdd && (
-        <div className="card slide-down" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card slide-down" style={{ padding: 20, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: 'var(--navy)' }}>New Office</div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 200px' }}>
-              <label className="label">Office Name</label>
-              <input className="input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Human Resource Office" />
-            </div>
-            <div style={{ flex: '2 1 280px' }}>
-              <label className="label">Email Address(es)</label>
-              <EmailList emails={formEmails} onChange={setFormEmails} />
-            </div>
+            <div style={{ flex: '1 1 200px' }}><label className="label">Office Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Human Resource Office" /></div>
+            <div style={{ flex: '2 1 280px' }}><label className="label">Email Address(es)</label><EmailList emails={formEmails} onChange={setFormEmails} /></div>
           </div>
           {formError && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{formError}</div>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button className="btn btn-primary" onClick={() => saveOffice(false)}><Save size={13} /> Save Office</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn btn-primary" onClick={() => saveOffice(false)}><Save size={13} /> Save</button>
             <button className="btn btn-ghost" onClick={() => { setShowAdd(false); resetForm(); }}><X size={13} /> Cancel</button>
           </div>
         </div>
@@ -595,127 +551,124 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
       {offices.length === 0 && !showAdd && (
         <div className="card" style={{ padding: 60, textAlign: 'center' }}>
           <Building2 size={40} style={{ color: 'var(--gray-300)', marginBottom: 12 }} />
-          <div style={{ color: 'var(--gray-500)', fontSize: 14 }}>No offices yet. Add your first office to get started.</div>
+          <div style={{ color: 'var(--gray-500)', fontSize: 14 }}>No offices yet.</div>
         </div>
       )}
 
-      {/* Office grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+      {/* Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
         {offices.map((office, i) => {
           const isCollapsed = collapsedCards.has(office.id);
           const isPdfOpen = openPdfs.has(office.id);
           const qItem = queueMap[office.id];
-          const isSendingThis = sendingId === office.id || qItem?.status === 'sending' || qItem?.status === 'retrying';
+          const isSending = sendingId === office.id || qItem?.status === 'sending' || qItem?.status === 'retrying';
+          const isSelected = selected.has(office.id);
+          const pdfs = pdfMap[office.id];
+          const hasPdfs = pdfs && pdfs.length > 0;
+          const pdfsLoaded = pdfs !== undefined;
+
+          // Card border color based on attachment state
+          const cardBorder = pdfsLoaded
+            ? hasPdfs ? '2px solid #3b8de0' : '2px solid var(--danger)'
+            : '1px solid var(--gray-200)';
 
           return (
-            <div key={office.id} className={`card fade-up d${Math.min(i + 1, 5)}`} style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div key={office.id} className={`card fade-up d${Math.min(i + 1, 5)}`}
+              style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', border: isSelected ? '2px solid var(--blue)' : cardBorder, transition: 'border 0.15s', position: 'relative' }}>
+
+              {/* Selection checkbox */}
+              <button onClick={() => toggleSelect(office.id)}
+                style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, background: 'none', border: 'none', cursor: 'pointer', color: isSelected ? 'var(--yellow)' : 'rgba(255,255,255,0.6)', display: 'flex' }}>
+                {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+              </button>
+
               {editId === office.id ? (
-                /* Edit mode */
-                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-                  <div><label className="label">Office Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} /></div>
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                  <div><label className="label">Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} /></div>
                   <div><label className="label">Email(s)</label><EmailList emails={formEmails} onChange={setFormEmails} /></div>
                   {formError && <div style={{ color: 'var(--danger)', fontSize: 12 }}>{formError}</div>}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
-                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => saveOffice(true, office.id)}><Save size={13} /> Save</button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => saveOffice(true, office.id)}><Save size={12} /> Save</button>
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setEditId(null); resetForm(); }}><X size={13} /></button>
                   </div>
                 </div>
               ) : (
                 <>
                   {/* Card header */}
-                  <div style={{ background: 'linear-gradient(135deg, var(--navy-700), var(--navy))', padding: '14px 14px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Building2 size={16} color="var(--yellow)" />
-                      </div>
-                      {/* Queue status dot */}
-                      {qItem && <div title={qItem.status} style={{ width: 8, height: 8, borderRadius: '50%', background: queueStatusColors[qItem.status], boxShadow: qItem.status === 'sending' ? '0 0 0 3px rgba(29,111,206,0.4)' : 'none', flexShrink: 0 }} />}
+                  <div style={{ background: 'linear-gradient(135deg, var(--navy-700), var(--navy))', padding: '14px 12px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 20 }}>
+                      <Building2 size={16} color="var(--yellow)" />
                     </div>
                     <div style={{ display: 'flex', gap: 3 }}>
-                      <button className="btn btn-icon btn-sm" title={isCollapsed ? 'Expand' : 'Collapse'}
-                        style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', borderRadius: 6 }}
-                        onClick={() => toggleCollapse(office.id)}>
-                        {isCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+                      {qItem && <div title={qItem.status} style={{ width: 7, height: 7, borderRadius: '50%', background: qColors[qItem.status], alignSelf: 'center', marginRight: 2 }} />}
+                      <button className="btn btn-icon btn-sm" style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', borderRadius: 6 }} onClick={() => toggleCollapse(office.id)}>
+                        {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
                       </button>
-                      <button className="btn btn-icon btn-sm" title="Edit"
-                        style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 6 }}
+                      <button className="btn btn-icon btn-sm" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 6 }}
                         onClick={() => { setEditId(office.id); setFormName(office.name); setFormEmails([...(office.emails ?? [''])]); setFormError(''); }}>
-                        <Edit2 size={13} />
+                        <Edit2 size={12} />
                       </button>
-                      <button className="btn btn-icon btn-sm" title="Delete"
-                        style={{ background: 'rgba(220,38,38,0.25)', color: '#fca5a5', borderRadius: 6 }}
-                        onClick={() => deleteOffice(office.id, office.name)}>
-                        <Trash2 size={13} />
+                      <button className="btn btn-icon btn-sm" style={{ background: 'rgba(220,38,38,0.25)', color: '#fca5a5', borderRadius: 6 }} onClick={() => deleteOffice(office.id, office.name)}>
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Collapsed view */}
+                  {/* Collapsed */}
                   {isCollapsed ? (
-                    <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 8 }}
-                      onClick={() => toggleCollapse(office.id)}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{office.name}</span>
-                      {qItem && <span style={{ fontSize: 10, fontWeight: 700, color: queueStatusColors[qItem.status], flexShrink: 0 }}>{qItem.status}</span>}
+                    <div style={{ padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 6 }} onClick={() => toggleCollapse(office.id)}>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--navy)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{office.name}</span>
+                      {qItem && <span style={{ fontSize: 10, fontWeight: 700, color: qColors[qItem.status] }}>{qItem.status}</span>}
                     </div>
                   ) : (
-                    /* Expanded body */
-                    <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)', lineHeight: 1.3 }}>{office.name}</div>
+                    <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', lineHeight: 1.3 }}>{office.name}</div>
 
-                      {/* Queue status banner */}
+                      {/* Queue status */}
                       {qItem && qItem.status !== 'pending' && (
-                        <div style={{ fontSize: 11, fontWeight: 600, color: queueStatusColors[qItem.status], background: `${queueStatusColors[qItem.status]}18`, padding: '4px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          {qItem.status === 'sending' && <><RefreshCw size={10} className="spin" />Sending...</>}
-                          {qItem.status === 'retrying' && <><RotateCcw size={10} />Retrying (attempt {qItem.attempt})...</>}
-                          {qItem.status === 'sent' && <><CheckCircle size={10} />Sent successfully</>}
-                          {qItem.status === 'failed' && <><XCircle size={10} />Failed: {qItem.error}</>}
+                        <div style={{ fontSize: 11, fontWeight: 600, color: qColors[qItem.status], background: `${qColors[qItem.status]}18`, padding: '3px 7px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          {qItem.status === 'sending' && <><RefreshCw size={9} className="spin" />Sending…</>}
+                          {qItem.status === 'retrying' && <><RotateCcw size={9} />Retry {qItem.attempt}…</>}
+                          {qItem.status === 'sent' && <><CheckCircle size={9} />Sent</>}
+                          {qItem.status === 'failed' && <><XCircle size={9} />Failed</>}
                         </div>
                       )}
 
                       {/* Emails */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {(office.emails ?? []).map((email, ei) => (
                           <div key={ei} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gray-500)', overflow: 'hidden' }}>
-                            <Mail size={10} color="var(--blue)" style={{ flexShrink: 0 }} />
+                            <Mail size={9} color="var(--blue)" style={{ flexShrink: 0 }} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
                           </div>
                         ))}
                       </div>
 
-                      {/* Attachments toggle */}
-                      <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', gap: 6, fontSize: 11 }}
+                      {/* Attachment indicator */}
+                      <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', gap: 5, fontSize: 11, padding: '4px 8px',
+                        color: pdfsLoaded ? (hasPdfs ? 'var(--blue)' : 'var(--danger)') : 'var(--gray-500)' }}
                         onClick={() => togglePdf(office.id)}>
-                        <Paperclip size={11} />
-                        {pdfMap[office.id]?.length ?? '–'} attachment{(pdfMap[office.id]?.length ?? 0) !== 1 ? 's' : ''}
-                        {isPdfOpen ? <ChevronUp size={11} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={11} style={{ marginLeft: 'auto' }} />}
+                        <Paperclip size={10} />
+                        {pdfsLoaded
+                          ? hasPdfs ? `${pdfs.length} attachment${pdfs.length > 1 ? 's' : ''}` : '⚠ No attachments'
+                          : '– attachments'}
+                        {isPdfOpen ? <ChevronUp size={10} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={10} style={{ marginLeft: 'auto' }} />}
                       </button>
 
-                      {/* Send button */}
+                      {/* Send */}
                       <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 'auto' }}
-                        disabled={isSendingThis || !!qItem}
-                        onClick={() => onSendOne(office.id)}
-                        title={qItem ? 'In queue — use Send All' : 'Send now'}>
-                        {isSendingThis ? <RefreshCw size={13} className="spin" /> : <Send size={13} />}
-                        {qItem
-                          ? qItem.status === 'sent' ? 'Sent ✓'
-                          : qItem.status === 'failed' ? 'Failed ✗'
-                          : qItem.status === 'pending' ? 'In Queue'
-                          : 'Sending...'
-                          : 'Send Report'}
+                        disabled={isSending || !!qItem} onClick={() => onSendOne(office.id)}>
+                        {isSending ? <RefreshCw size={12} className="spin" /> : <Send size={12} />}
+                        {qItem ? (qItem.status === 'sent' ? 'Sent ✓' : qItem.status === 'failed' ? 'Failed ✗' : qItem.status === 'pending' ? 'Queued' : 'Sending…') : 'Send Report'}
                       </button>
                     </div>
                   )}
 
                   {/* PDF panel */}
                   {!isCollapsed && isPdfOpen && (
-                    <DragDropPanel
-                      officeId={office.id}
-                      files={pdfMap[office.id] ?? []}
-                      uploading={uploading}
-                      onUpload={uploadPDFs}
-                      onDelete={deletePDF}
-                      onClickUpload={() => { activeUploadId.current = office.id; fileRef.current?.click(); }}
-                    />
+                    <DragDropPanel officeId={office.id} files={pdfMap[office.id] ?? []} uploading={uploading}
+                      onUpload={uploadPDFs} onDelete={deletePDF}
+                      onClickUpload={() => { activeUploadId.current = office.id; fileRef.current?.click(); }} />
                   )}
                 </>
               )}
@@ -730,25 +683,50 @@ function OfficesTab({ offices, sendingId, queueMap, onSendOne, onRefresh, showTo
   );
 }
 
-// ─── Template Tab ─────────────────────────────────────────────────────────────
-function TemplateTab({ template, setTemplate, showToast }: {
-  template: EmailTemplate; setTemplate: (t: EmailTemplate) => void;
+// ─── Templates Tab ────────────────────────────────────────────────────────────
+function TemplatesTab({ templates, activeTemplateId, setActiveTemplateId, onRefresh, showToast }: {
+  templates: EmailTemplate[]; activeTemplateId: string;
+  setActiveTemplateId: (id: string) => void;
+  onRefresh: () => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }) {
-  const [localSubject, setLocalSubject] = useState(template.subject);
-  const [localBody, setLocalBody] = useState(template.body);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formSubject, setFormSubject] = useState('');
+  const [formBody, setFormBody] = useState('');
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setLocalSubject(template.subject); setLocalBody(template.body); }, [template]);
+  const active = templates.find(t => t.id === (editId ?? '')) ?? null;
 
-  const save = async () => {
+  const openEdit = (t: EmailTemplate) => { setEditId(t.id); setFormName(t.name); setFormSubject(t.subject); setFormBody(t.body); setShowNew(false); setPreview(false); };
+  const openNew = () => { setEditId(null); setFormName(''); setFormSubject(''); setFormBody(''); setShowNew(true); setPreview(false); };
+
+  const saveTemplate = async (isNew: boolean) => {
+    if (!formName || !formSubject || !formBody) { showToast('All fields required', 'error'); return; }
     setSaving(true);
-    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailTemplate: { subject: localSubject, body: localBody } }) });
-    setTemplate({ subject: localSubject, body: localBody });
+    const method = isNew ? 'POST' : 'PUT';
+    const body = isNew ? { name: formName, subject: formSubject, body: formBody } : { id: editId, name: formName, subject: formSubject, body: formBody };
+    const res = await fetch('/api/settings', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setSaving(false);
-    showToast('Template saved', 'success');
+    if (res.ok) { showToast(isNew ? 'Template created' : 'Template saved', 'success'); setShowNew(false); setEditId(null); await onRefresh(); }
+    else showToast('Failed to save', 'error');
+  };
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm('Delete this template?')) return;
+    await fetch(`/api/settings?id=${id}`, { method: 'DELETE' });
+    if (editId === id) setEditId(null);
+    await onRefresh();
+    showToast('Template deleted', 'info');
+  };
+
+  const setActive = async (id: string) => {
+    setActiveTemplateId(id);
+    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeTemplateId: id }) });
+    showToast('Active template updated', 'success');
   };
 
   const previewText = (text: string) =>
@@ -756,95 +734,198 @@ function TemplateTab({ template, setTemplate, showToast }: {
         .replace(/\{\{month\}\}/g, new Date().toLocaleString('default', { month: 'long', year: 'numeric' }))
         .replace(/\{\{senderName\}\}/g, 'Biometrics Department');
 
+  const renderPreview = (text: string) =>
+    text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:10px 0"/>')
+        .split('\n').map(l => l.trim() === '' ? '<br/>' : `<p style="margin:0 0 5px;font-size:13px;line-height:1.7;">${l}</p>`).join('');
+
   const wrapSelection = (before: string, after: string) => {
     const ta = textareaRef.current; if (!ta) return;
-    const start = ta.selectionStart; const end = ta.selectionEnd;
-    setLocalBody(localBody.substring(0, start) + before + localBody.substring(start, end) + after + localBody.substring(end));
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + before.length, end + before.length); }, 0);
+    const s = ta.selectionStart; const e = ta.selectionEnd;
+    setFormBody(formBody.substring(0, s) + before + formBody.substring(s, e) + after + formBody.substring(e));
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(s + before.length, e + before.length); }, 0);
   };
 
   const insertAtCursor = (text: string) => {
     const ta = textareaRef.current; if (!ta) return;
-    const start = ta.selectionStart;
-    setLocalBody(localBody.substring(0, start) + text + localBody.substring(start));
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + text.length, start + text.length); }, 0);
+    const s = ta.selectionStart;
+    setFormBody(formBody.substring(0, s) + text + formBody.substring(s));
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(s + text.length, s + text.length); }, 0);
   };
 
-  const renderPreview = (text: string) =>
-    text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:12px 0"/>')
-        .split('\n')
-        .map(line => line.trim() === '' ? '<br/>' : `<p style="margin:0 0 6px;color:#1e293b;line-height:1.7;font-size:14px;">${line}</p>`)
-        .join('');
-
-  const placeholders = [
-    { key: '{{officeName}}', desc: 'Office name' },
-    { key: '{{month}}', desc: 'Month & year' },
-    { key: '{{senderName}}', desc: 'Sender name' },
-  ];
-  const toolbarBtns = [
-    { label: 'B', title: 'Bold', style: { fontWeight: 800 as const }, action: () => wrapSelection('**', '**') },
-    { label: 'I', title: 'Italic', style: { fontStyle: 'italic' as const }, action: () => wrapSelection('*', '*') },
-    { label: '—', title: 'Divider', style: {}, action: () => insertAtCursor('\n---\n') },
-  ];
+  const placeholders = ['{{officeName}}', '{{month}}', '{{senderName}}'];
 
   return (
-    <div className="fade-up" style={{ maxWidth: 780 }}>
-      <div className="card" style={{ padding: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ fontWeight: 800, fontSize: 16, color: 'var(--navy)' }}>Email Template</h2>
-            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>Customize the email sent to all offices.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPreview(!preview)}>
-              {preview ? <EyeOff size={13} /> : <Eye size={13} />} {preview ? 'Edit' : 'Preview'}
-            </button>
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
-              {saving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />} Save
-            </button>
-          </div>
-        </div>
-        <div style={{ background: 'var(--blue-pale)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Placeholders:</span>
-          {placeholders.map(p => (
-            <button key={p.key} title={p.desc} onClick={() => insertAtCursor(p.key)}
-              style={{ background: '#fff', color: 'var(--blue)', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600, border: '1px solid var(--blue-pale)', cursor: 'pointer', fontFamily: 'monospace' }}>
-              {p.key}
-            </button>
-          ))}
-          <span style={{ fontSize: 11, color: 'var(--gray-500)', marginLeft: 4 }}>Click to insert at cursor</span>
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label className="label">Subject Line</label>
-          {preview ? (
-            <div style={{ padding: '10px 14px', background: 'var(--gray-50)', border: '1.5px solid var(--gray-200)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600 }}>{previewText(localSubject)}</div>
-          ) : (
-            <input className="input" value={localSubject} onChange={e => setLocalSubject(e.target.value)} placeholder="Email subject..." />
-          )}
-        </div>
-        <div>
-          <label className="label">Email Body</label>
-          {!preview && (
-            <div style={{ display: 'flex', gap: 4, marginBottom: 6, padding: '6px 8px', background: 'var(--gray-100)', borderRadius: '6px 6px 0 0', border: '1.5px solid var(--gray-200)', borderBottom: 'none' }}>
-              {toolbarBtns.map(btn => (
-                <button key={btn.label} title={btn.title} onClick={btn.action}
-                  style={{ ...btn.style, background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 13, color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
-                  {btn.label}
-                </button>
-              ))}
-              <span style={{ fontSize: 10, color: 'var(--gray-300)', alignSelf: 'center', marginLeft: 6 }}>**bold** · *italic* · --- divider</span>
+    <div className="fade-up" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      {/* Template list */}
+      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button className="btn btn-navy btn-sm" style={{ width: '100%', marginBottom: 4 }} onClick={openNew}><Plus size={13} /> New Template</button>
+        {templates.map(t => (
+          <div key={t.id} className="card" style={{ padding: '10px 12px', cursor: 'pointer', border: (editId === t.id || (!editId && !showNew && t.id === activeTemplateId)) ? '2px solid var(--blue)' : '1px solid var(--gray-200)' }}
+            onClick={() => openEdit(t)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <BookOpen size={13} color={t.id === activeTemplateId ? 'var(--blue)' : 'var(--gray-500)'} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+              {t.id === activeTemplateId && <span className="badge badge-blue" style={{ fontSize: 9 }}>Active</span>}
             </div>
-          )}
-          {preview ? (
-            <div style={{ padding: 16, background: 'var(--gray-50)', border: '1.5px solid var(--gray-200)', borderRadius: 'var(--radius-sm)', fontSize: 13, lineHeight: 1.8, minHeight: 200 }}
-              dangerouslySetInnerHTML={{ __html: renderPreview(previewText(localBody)) }} />
-          ) : (
-            <textarea ref={textareaRef} className="textarea" value={localBody} onChange={e => setLocalBody(e.target.value)} style={{ minHeight: 280, borderRadius: '0 0 6px 6px' }} />
-          )}
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.subject}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Editor panel */}
+      <div className="card" style={{ flex: 1, padding: 24 }}>
+        {!editId && !showNew ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray-500)' }}>
+            <BookOpen size={32} style={{ opacity: 0.3, marginBottom: 10 }} />
+            <div>Select a template to edit or create a new one.</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontWeight: 800, fontSize: 15, color: 'var(--navy)' }}>{showNew ? 'New Template' : 'Edit Template'}</h2>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {editId && editId !== 'default' && !templates.find(t => t.id === editId)?.isDefault && (
+                  <button className="btn btn-danger btn-sm" onClick={() => deleteTemplate(editId)}><Trash size={12} /> Delete</button>
+                )}
+                {editId && editId !== activeTemplateId && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setActive(editId)}><CheckCircle size={12} /> Set Active</button>
+                )}
+                <button className="btn btn-ghost btn-sm" onClick={() => setPreview(!preview)}>
+                  {preview ? <EyeOff size={12} /> : <Eye size={12} />} {preview ? 'Edit' : 'Preview'}
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => saveTemplate(showNew)} disabled={saving}>
+                  {saving ? <RefreshCw size={12} className="spin" /> : <Save size={12} />} Save
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div><label className="label">Template Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Monthly Biometrics" /></div>
+
+              {/* Placeholders */}
+              <div style={{ background: 'var(--blue-pale)', borderRadius: 6, padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Insert:</span>
+                {placeholders.map(p => (
+                  <button key={p} onClick={() => insertAtCursor(p)}
+                    style={{ background: '#fff', color: 'var(--blue)', padding: '1px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600, border: '1px solid rgba(29,111,206,0.2)', cursor: 'pointer', fontFamily: 'monospace' }}>{p}</button>
+                ))}
+              </div>
+
+              <div><label className="label">Subject</label>
+                {preview ? <div style={{ padding: '9px 12px', background: 'var(--gray-50)', border: '1.5px solid var(--gray-200)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600 }}>{previewText(formSubject)}</div>
+                  : <input className="input" value={formSubject} onChange={e => setFormSubject(e.target.value)} placeholder="Email subject…" />}
+              </div>
+
+              <div><label className="label">Body</label>
+                {!preview && (
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4, padding: '5px 8px', background: 'var(--gray-100)', borderRadius: '6px 6px 0 0', border: '1.5px solid var(--gray-200)', borderBottom: 'none' }}>
+                    {[{ l: 'B', s: { fontWeight: 800 as const }, a: () => wrapSelection('**', '**') }, { l: 'I', s: { fontStyle: 'italic' as const }, a: () => wrapSelection('*', '*') }, { l: '—', s: {}, a: () => insertAtCursor('\n---\n') }].map(b => (
+                      <button key={b.l} onClick={b.a} style={{ ...b.s, background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 4, width: 26, height: 24, cursor: 'pointer', fontSize: 12, color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>{b.l}</button>
+                    ))}
+                    <span style={{ fontSize: 10, color: 'var(--gray-300)', alignSelf: 'center', marginLeft: 6 }}>**bold** · *italic* · --- divider</span>
+                  </div>
+                )}
+                {preview
+                  ? <div style={{ padding: 14, background: 'var(--gray-50)', border: '1.5px solid var(--gray-200)', borderRadius: 'var(--radius-sm)', minHeight: 160 }} dangerouslySetInnerHTML={{ __html: renderPreview(previewText(formBody)) }} />
+                  : <textarea ref={textareaRef} className="textarea" value={formBody} onChange={e => setFormBody(e.target.value)} style={{ minHeight: 220, borderRadius: '0 0 6px 6px' }} />}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Scheduler Tab ────────────────────────────────────────────────────────────
+function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, showToast }: {
+  scheduler: SchedulerConfig; setScheduler: (s: SchedulerConfig) => void;
+  autoSend: boolean; onToggleAutoSend: () => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) {
+  const [local, setLocal] = useState(scheduler);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setLocal(scheduler), [scheduler]);
+
+  const save = async () => {
+    setSaving(true);
+    const res = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheduler: local }) });
+    setSaving(false);
+    if (res.ok) { setScheduler(local); showToast('Schedule saved', 'success'); }
+    else showToast('Failed to save', 'error');
+  };
+
+  const nextRunDate = () => {
+    const now = new Date();
+    let d = new Date(now.getFullYear(), now.getMonth(), local.dayOfMonth, local.hour, local.minute);
+    if (d <= now) d = new Date(now.getFullYear(), now.getMonth() + 1, local.dayOfMonth, local.hour, local.minute);
+    return d.toLocaleString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+
+  return (
+    <div className="fade-up" style={{ maxWidth: 560 }}>
+      <div className="card" style={{ padding: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Calendar size={18} color="var(--yellow)" />
+          </div>
+          <div>
+            <h2 style={{ fontWeight: 800, fontSize: 16, color: 'var(--navy)' }}>Auto-Send Schedule</h2>
+            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Configure when emails are automatically sent.</p>
+          </div>
         </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--gray-300)' }}>Select text then click B or I to format. Use Preview to see how it looks.</div>
+
+        {/* Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: autoSend ? 'var(--blue-pale)' : 'var(--gray-100)', borderRadius: 8, marginBottom: 20, cursor: 'pointer' }} onClick={onToggleAutoSend}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: autoSend ? 'var(--blue)' : 'var(--gray-700)' }}>Auto-Send</div>
+            <div style={{ fontSize: 12, color: autoSend ? 'var(--blue)' : 'var(--gray-500)', marginTop: 2 }}>{autoSend ? 'Emails will be sent automatically on schedule' : 'Auto-send is disabled — manual only'}</div>
+          </div>
+          {autoSend ? <ToggleRight size={28} color="var(--blue)" /> : <ToggleLeft size={28} color="var(--gray-400)" />}
+        </div>
+
+        {/* Config */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: autoSend ? 1 : 0.5, pointerEvents: autoSend ? 'all' : 'none' }}>
+          <div>
+            <label className="label">Day of Month</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="range" min={1} max={31} value={local.dayOfMonth} onChange={e => setLocal({ ...local, dayOfMonth: +e.target.value })}
+                style={{ flex: 1, accentColor: 'var(--blue)' }} />
+              <div style={{ width: 56, textAlign: 'center', fontWeight: 800, fontSize: 18, color: 'var(--navy)' }}>{ordinal(local.dayOfMonth)}</div>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Time</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Hour (0–23)</div>
+                <input type="number" min={0} max={23} className="input" value={local.hour} onChange={e => setLocal({ ...local, hour: Math.max(0, Math.min(23, +e.target.value)) })} />
+              </div>
+              <div style={{ fontSize: 20, color: 'var(--gray-300)', paddingTop: 18 }}>:</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Minute (0–59)</div>
+                <input type="number" min={0} max={59} className="input" value={local.minute} onChange={e => setLocal({ ...local, minute: Math.max(0, Math.min(59, +e.target.value)) })} />
+              </div>
+              <div style={{ paddingTop: 18, fontSize: 13, fontWeight: 700, color: 'var(--navy)', flexShrink: 0 }}>{pad(local.hour)}:{pad(local.minute)}</div>
+            </div>
+          </div>
+
+          {/* Next run preview */}
+          <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Next Scheduled Run</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{nextRunDate()}</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 3 }}>Cron: <code style={{ fontSize: 11 }}>{local.minute} {local.hour} {local.dayOfMonth} * *</code></div>
+          </div>
+        </div>
+
+        <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={save} disabled={saving}>
+          {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />} Save Schedule
+        </button>
       </div>
     </div>
   );
@@ -855,25 +936,22 @@ function LogsTab({ logs }: { logs: SendLog[] }) {
   return (
     <div className="fade-up">
       {logs.length === 0 ? (
-        <div className="card" style={{ padding: 60, textAlign: 'center' }}>
-          <Clock size={36} style={{ color: 'var(--gray-300)', marginBottom: 12 }} />
-          <div style={{ color: 'var(--gray-500)' }}>No send history yet.</div>
-        </div>
+        <div className="card" style={{ padding: 60, textAlign: 'center' }}><Clock size={36} style={{ color: 'var(--gray-300)', marginBottom: 12 }} /><div style={{ color: 'var(--gray-500)' }}>No send history yet.</div></div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {logs.map((log, i) => (
-            <div key={log.id} className={`card fade-up d${Math.min(i + 1, 5)}`} style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0, background: log.status === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {log.status === 'success' ? <CheckCircle size={17} color="var(--success)" /> : <XCircle size={17} color="var(--danger)" />}
+            <div key={log.id} className={`card fade-up d${Math.min(i + 1, 5)}`} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: log.status === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {log.status === 'success' ? <CheckCircle size={16} color="var(--success)" /> : <XCircle size={16} color="var(--danger)" />}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{log.officeName}</div>
                 <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{log.email}</div>
-                {log.error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3, fontWeight: 500 }}>⚠ {log.error}</div>}
+                {log.error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2, fontWeight: 500 }}>⚠ {log.error}</div>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <span className={`badge ${log.status === 'success' ? 'badge-success' : 'badge-danger'}`}>{log.status === 'success' ? 'Sent' : 'Failed'}</span>
-                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 5 }}>{log.filesCount} file{log.filesCount !== 1 ? 's' : ''} · {fmtDate(log.sentAt)}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>{log.filesCount} file{log.filesCount !== 1 ? 's' : ''} · {fmtDate(log.sentAt)}</div>
               </div>
             </div>
           ))}
@@ -892,70 +970,58 @@ function AdminTab({ showToast }: { showToast: (msg: string, type?: 'success' | '
   const [hasPassword, setHasPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [connStatus, setConnStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
 
-  useEffect(() => {
-    fetch('/api/admin').then(r => r.json()).then(d => { setGmailUser(d.gmailUser || ''); setSenderName(d.gmailFromName || ''); setHasPassword(d.hasPassword || false); });
-  }, []);
+  useEffect(() => { fetch('/api/admin').then(r => r.json()).then(d => { setGmailUser(d.gmailUser || ''); setSenderName(d.gmailFromName || ''); setHasPassword(d.hasPassword || false); }); }, []);
 
   const save = async () => {
-    if (!gmailUser) { showToast('Gmail address is required', 'error'); return; }
+    if (!gmailUser) { showToast('Gmail address required', 'error'); return; }
     setSaving(true);
     const res = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gmailUser, gmailAppPassword: gmailPass || undefined, gmailFromName: senderName }) });
     setSaving(false);
-    if (res.ok) { showToast('Saved. Restart app to apply new credentials.', 'success'); setGmailPass(''); setHasPassword(true); }
+    if (res.ok) { showToast('Update your Vercel env vars and redeploy to apply changes.', 'info');setGmailPass(''); setHasPassword(true); }
     else showToast('Failed to save', 'error');
   };
 
-  const testConnection = async () => {
-    setTesting(true); setConnectionStatus('idle');
+  const test = async () => {
+    setTesting(true); setConnStatus('idle');
     const res = await fetch('/api/admin/verify');
-    const data = await res.json();
-    setConnectionStatus(data.connected ? 'ok' : 'fail');
+    const d = await res.json();
+    setConnStatus(d.connected ? 'ok' : 'fail');
     setTesting(false);
-    showToast(data.connected ? 'Gmail connected!' : 'Connection failed.', data.connected ? 'success' : 'error');
+    showToast(d.connected ? 'Gmail connected!' : 'Connection failed.', d.connected ? 'success' : 'error');
   };
 
   return (
-    <div className="fade-up" style={{ maxWidth: 600 }}>
+    <div className="fade-up" style={{ maxWidth: 560 }}>
       <div className="card" style={{ padding: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Shield size={18} color="var(--yellow)" />
-          </div>
-          <div>
-            <h2 style={{ fontWeight: 800, fontSize: 16, color: 'var(--navy)' }}>Gmail Configuration</h2>
-            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Stored in <code style={{ fontSize: 11 }}>.env.local</code></p>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Shield size={18} color="var(--yellow)" /></div>
+          <div><h2 style={{ fontWeight: 800, fontSize: 16, color: 'var(--navy)' }}>Gmail Configuration</h2><p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Configure via <strong>Vercel Environment Variables</strong></p></div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div><label className="label">Sender Display Name</label><input className="input" value={senderName} onChange={e => setSenderName(e.target.value)} placeholder="e.g. Biometrics Department" /></div>
-          <div><label className="label">Gmail Address</label><input className="input" value={gmailUser} onChange={e => setGmailUser(e.target.value)} placeholder="your_email@gmail.com" type="email" /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div><label className="label">Sender Name</label><input className="input" value={senderName} onChange={e => setSenderName(e.target.value)} placeholder="e.g. Biometrics Department" /></div>
+          <div><label className="label">Gmail Address</label><input className="input" value={gmailUser} onChange={e => setGmailUser(e.target.value)} placeholder="you@gmail.com" type="email" /></div>
           <div>
-            <label className="label">Gmail App Password {hasPassword && <span className="badge badge-success" style={{ marginLeft: 8 }}>Saved</span>}</label>
+            <label className="label">App Password {hasPassword && <span className="badge badge-success" style={{ marginLeft: 8 }}>Saved</span>}</label>
             <div style={{ position: 'relative' }}>
-              <input className="input" value={gmailPass} onChange={e => setGmailPass(e.target.value)}
-                placeholder={hasPassword ? 'Enter new password to update' : 'xxxx-xxxx-xxxx-xxxx'}
-                type={showPass ? 'text' : 'password'} style={{ paddingRight: 44 }} />
+              <input className="input" value={gmailPass} onChange={e => setGmailPass(e.target.value)} placeholder={hasPassword ? 'Enter to update' : 'xxxx-xxxx-xxxx-xxxx'} type={showPass ? 'text' : 'password'} style={{ paddingRight: 42 }} />
               <button onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-500)', display: 'flex' }}>
-                {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 5 }}>
-              Generate at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>myaccount.google.com/apppasswords</a> (requires 2FA)
-            </div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>Generate at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>myaccount.google.com/apppasswords</a></div>
           </div>
         </div>
-        {connectionStatus !== 'idle' && (
-          <div className={`slide-down badge ${connectionStatus === 'ok' ? 'badge-success' : 'badge-danger'}`}
-            style={{ marginTop: 16, padding: '8px 12px', borderRadius: 8, width: '100%', justifyContent: 'flex-start', gap: 8 }}>
-            {connectionStatus === 'ok' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-            {connectionStatus === 'ok' ? 'Gmail connection successful!' : 'Connection failed — check your credentials.'}
+        {connStatus !== 'idle' && (
+          <div className={`slide-down badge ${connStatus === 'ok' ? 'badge-success' : 'badge-danger'}`} style={{ marginTop: 14, padding: '8px 12px', borderRadius: 7, width: '100%', justifyContent: 'flex-start', gap: 7 }}>
+            {connStatus === 'ok' ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
+            {connStatus === 'ok' ? 'Connection successful!' : 'Failed — check credentials.'}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />} Save Configuration</button>
-          <button className="btn btn-ghost" onClick={testConnection} disabled={testing}>{testing ? <RefreshCw size={14} className="spin" /> : <CheckCircle size={14} />} Test Connection</button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />} Save</button>
+          <button className="btn btn-ghost" onClick={test} disabled={testing}>{testing ? <RefreshCw size={13} className="spin" /> : <CheckCircle size={13} />} Test Connection</button>
         </div>
       </div>
     </div>
