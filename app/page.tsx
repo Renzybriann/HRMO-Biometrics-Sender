@@ -461,7 +461,7 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
   const [formEmails, setFormEmails] = useState<string[]>(['']);
   const [formError, setFormError] = useState('');
   const [pdfMap, setPdfMap] = useState<Record<string, PDFFile[]>>({});
-  const [uploading, setUploading] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const activeUploadId = useRef<string>('');
 
@@ -548,16 +548,16 @@ useEffect(() => {
   };
 
   const uploadPDFs = async (officeId: string, files: FileList) => {
-    setUploading(true);
-    const fd = new FormData();
-    fd.append('officeId', officeId);
-    for (const f of Array.from(files)) fd.append('files', f);
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    await fetchPDFs(officeId);
-    setUploading(false);
-    showToast(`${data.count} file(s) uploaded`, 'success');
-  };
+  setUploadingId(officeId);
+  const fd = new FormData();
+  fd.append('officeId', officeId);
+  for (const f of Array.from(files)) fd.append('files', f);
+  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  await fetchPDFs(officeId);
+  setUploadingId(null);
+  showToast(`${data.count} file(s) uploaded`, 'success');
+};
 
   const deletePDF = async (officeId: string, fileName: string) => {
     await fetch(`/api/upload?officeId=${officeId}&file=${encodeURIComponent(fileName)}`, { method: 'DELETE' });
@@ -774,7 +774,7 @@ useEffect(() => {
 
                   {/* PDF panel */}
                   {!isCollapsed && isPdfOpen && (
-                    <DragDropPanel officeId={office.id} files={pdfMap[office.id] ?? []} uploading={uploading}
+                    <DragDropPanel officeId={office.id} files={pdfMap[office.id] ?? []} uploading={uploadingId === office.id}
                       onUpload={uploadPDFs} onDelete={deletePDF}
                       onClickUpload={() => { activeUploadId.current = office.id; fileRef.current?.click(); }} />
                   )}
