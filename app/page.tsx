@@ -165,21 +165,83 @@ function DragDropPanel({ officeId, files, uploading, onUpload, onDelete, onClick
   onClickUpload: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    setDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    if (e.dataTransfer.files.length > 0) onUpload(officeId, e.dataTransfer.files);
+  };
+
   return (
     <div className="slide-down" style={{ borderTop: '1px solid var(--gray-200)', background: 'var(--gray-50)', padding: '12px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-700)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Files</span>
-        <button className="btn btn-navy btn-sm" style={{ fontSize: 11 }} disabled={uploading} onClick={onClickUpload}><Upload size={11} /> {uploading ? 'Uploading…' : 'Upload'}</button>
+        <button className="btn btn-navy btn-sm" style={{ fontSize: 11 }} disabled={uploading} onClick={onClickUpload}>
+          <Upload size={11} /> {uploading ? 'Uploading…' : 'Upload'}
+        </button>
       </div>
+
+      {/* Drop zone */}
       <div
-        onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length > 0) onUpload(officeId, e.dataTransfer.files); }}
-        onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onClick={onClickUpload}
-        style={{ border: `2px dashed ${dragging ? 'var(--blue)' : 'var(--gray-200)'}`, borderRadius: 6, padding: files.length === 0 ? '18px 8px' : '6px', textAlign: 'center', background: dragging ? 'var(--blue-pale)' : 'transparent', cursor: 'pointer', transition: 'all 0.15s', marginBottom: files.length > 0 ? 8 : 0 }}>
-        {uploading ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--blue)', fontSize: 11 }}><RefreshCw size={12} className="spin" /> Uploading…</div>
-          : dragging ? <div style={{ color: 'var(--blue)', fontSize: 11, fontWeight: 600 }}><div>Drop to upload</div></div>
-          : files.length === 0 ? <div style={{ color: 'var(--gray-500)', fontSize: 11 }}><Upload size={14} style={{ marginBottom: 4, opacity: 0.4 }} /><div>Drag & drop PDFs</div><div style={{ fontSize: 10, color: 'var(--gray-300)' }}>or click to browse</div></div>
-          : <div style={{ color: 'var(--gray-300)', fontSize: 10 }}>Drop more or click to browse</div>}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={onClickUpload}
+        style={{
+          border: `2px dashed ${dragging ? 'var(--blue)' : 'var(--gray-200)'}`,
+          borderRadius: 6,
+          padding: files.length === 0 ? '24px 8px' : '10px',
+          textAlign: 'center',
+          background: dragging ? 'var(--blue-pale)' : 'transparent',
+          cursor: 'pointer',
+          transition: 'all 0.15s',
+          marginBottom: files.length > 0 ? 8 : 0,
+          // Prevent children from blocking pointer events during drag
+          pointerEvents: 'all',
+        }}
+      >
+        {uploading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--blue)', fontSize: 11, pointerEvents: 'none' }}>
+            <RefreshCw size={12} className="spin" /> Uploading…
+          </div>
+        ) : dragging ? (
+          <div style={{ color: 'var(--blue)', fontSize: 13, fontWeight: 700, pointerEvents: 'none' }}>
+            <Upload size={20} style={{ marginBottom: 6 }} />
+            <div>Drop to upload</div>
+          </div>
+        ) : files.length === 0 ? (
+          <div style={{ color: 'var(--gray-500)', fontSize: 11, pointerEvents: 'none' }}>
+            <Upload size={16} style={{ marginBottom: 4, opacity: 0.4 }} />
+            <div>Drag & drop PDFs</div>
+            <div style={{ fontSize: 10, color: 'var(--gray-300)', marginTop: 2 }}>or click to browse</div>
+          </div>
+        ) : (
+          <div style={{ color: 'var(--gray-400)', fontSize: 10, pointerEvents: 'none' }}>
+            Drop more PDFs or click to browse
+          </div>
+        )}
       </div>
+
+      {/* File list */}
       {files.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {files.map(file => (
@@ -187,7 +249,9 @@ function DragDropPanel({ officeId, files, uploading, onUpload, onDelete, onClick
               <FileText size={12} color="var(--danger)" style={{ flexShrink: 0 }} />
               <span style={{ flex: 1, fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
               <span style={{ fontSize: 10, color: 'var(--gray-300)', flexShrink: 0 }}>{fmt(file.size)}</span>
-              <button className="btn btn-danger btn-icon btn-sm" style={{ padding: 3 }} onClick={() => onDelete(officeId, file.name)}><X size={11} /></button>
+              <button className="btn btn-danger btn-icon btn-sm" style={{ padding: 3 }} onClick={() => onDelete(officeId, file.name)}>
+                <X size={11} />
+              </button>
             </div>
           ))}
         </div>
