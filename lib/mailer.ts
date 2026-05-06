@@ -50,34 +50,41 @@ export async function sendBiometricsEmail({
     .join('\n');
 
   const html = `
-    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,0.08);">
       
       <!-- Header -->
-      <div style="background:linear-gradient(135deg,#f0f7ff 0%,#e0effe 100%);padding:28px 36px;border-bottom:2px solid #bfdbfe;">
+      <div style="background:linear-gradient(135deg,#1e293b 0%,#334155 100%);padding:28px 36px;border-bottom:2px solid #1d4ed8;">
         <div style="display:flex;align-items:center;gap:14px;">
-          <div style="width:46px;height:46px;background:#2563eb;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <div style="width:22px;height:22px;border:3px solid #fff;border-radius:50%;"></div>
-          </div>
+          
           <div>
-            <div style="font-size:11px;font-weight:700;color:#2563eb;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:3px;">Biometrics Department</div>
-            <h1 style="margin:0;font-size:20px;font-weight:800;color:#1e3a5f;letter-spacing:-0.3px;">${subject}</h1>
+            <div style="font-size:11px;font-weight:700;color:#93c5fd;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:3px;">
+              Human Resource Management Office
+            </div>
+            <h1 style="margin:0;font-size:20px;font-weight:800;color:#f1f5f9;letter-spacing:-0.3px;">
+              ${subject}
+            </h1>
           </div>
         </div>
       </div>
 
       <!-- Divider accent -->
-      <div style="height:4px;background:linear-gradient(90deg,#2563eb,#60a5fa,#bfdbfe);"></div>
+      <div style="height:4px;background:linear-gradient(90deg,#1d4ed8,#3b82f6,#93c5fd);"></div>
 
       <!-- Body -->
-      <div style="padding:32px 36px;background:#ffffff;">
+      <div style="padding:32px 36px;background:#ffffff;color:#1e293b;font-size:14px;line-height:1.6;">
         ${bodyHtml}
       </div>
 
       <!-- Footer -->
-      <div style="background:#f8fafc;padding:18px 36px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
-        <p style="margin:0;font-size:11px;color:#94a3b8;">This is an automated message. Please do not reply directly to this email.</p>
-        <p style="margin:0;font-size:11px;color:#cbd5e1;font-weight:600;">HRMO</p>
+      <div style="background:#f1f5f9;padding:18px 36px;border-top:1px solid #cbd5f5;display:flex;align-items:center;justify-content:space-between;">
+        <p style="margin:0;font-size:11px;color:#64748b;">
+          This is an automated message. Please do not reply directly to this email.
+        </p>
+        <p style="margin:0;font-size:11px;color:#334155;font-weight:600;">
+          HRMO
+        </p>
       </div>
+
     </div>
   `;
 

@@ -22,6 +22,7 @@ export async function GET() {
       autoSendEnabled: settings.autoSendEnabled,
       activeTemplateId: settings.activeTemplateId,
       scheduler: settings.scheduler,
+      scheduledOfficeIds: settings.scheduledOfficeIds, 
       logs,
       templates,
     });
@@ -44,6 +45,9 @@ export async function PATCH(req: NextRequest) {
       const current = await getSettings();
       patch.scheduler = { ...current.scheduler, ...body.scheduler };
     }
+    if (body.scheduledOfficeIds !== undefined) {         
+      patch.scheduledOfficeIds = body.scheduledOfficeIds; 
+    }                                                    
 
     await updateSettings(patch);
     const settings = await getSettings();
@@ -52,6 +56,7 @@ export async function PATCH(req: NextRequest) {
       autoSendEnabled: settings.autoSendEnabled,
       activeTemplateId: settings.activeTemplateId,
       scheduler: settings.scheduler,
+      scheduledOfficeIds: settings.scheduledOfficeIds, 
       templates,
     });
   } catch (err) {

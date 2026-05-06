@@ -38,6 +38,7 @@ export interface Settings {
   autoSendEnabled: boolean;
   activeTemplateId: string;
   scheduler: SchedulerConfig;
+  scheduledOfficeIds: string[];
 }
 
 const DEFAULT_TEMPLATE: EmailTemplate = {
@@ -181,12 +182,13 @@ export async function getSettings(): Promise<Settings> {
   const { data, error } = await supabase
     .from('settings').select('*').eq('id', 1).single();
   if (error || !data) {
-    return { autoSendEnabled: true, activeTemplateId: 'default', scheduler: DEFAULT_SCHEDULER };
+    return { autoSendEnabled: true, activeTemplateId: 'default', scheduler: DEFAULT_SCHEDULER, scheduledOfficeIds: [] };
   }
   return {
     autoSendEnabled: data.auto_send_enabled,
     activeTemplateId: data.active_template_id ?? 'default',
     scheduler: { ...DEFAULT_SCHEDULER, ...(data.scheduler ?? {}) },
+    scheduledOfficeIds: data.scheduled_office_ids ?? [],
   };
 }
 
@@ -195,6 +197,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   if (patch.autoSendEnabled !== undefined) update.auto_send_enabled = patch.autoSendEnabled;
   if (patch.activeTemplateId !== undefined) update.active_template_id = patch.activeTemplateId;
   if (patch.scheduler !== undefined) update.scheduler = patch.scheduler;
+  if (patch.scheduledOfficeIds !== undefined) update.scheduled_office_ids = patch.scheduledOfficeIds;
 
   const { error } = await supabase.from('settings').update(update).eq('id', 1);
   if (error) throw new Error(error.message);
