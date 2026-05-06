@@ -414,11 +414,24 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
     setPdfMap(p => ({ ...p, [id]: d.files || [] }));
   };
 
-  // Auto-fetch PDFs for ALL offices on mount
+// Auto-fetch PDFs for ALL offices on mount
+// and auto-open the PDF panel for offices with no attachments
+useEffect(() => {
+  offices.forEach(async (o) => {
+    await fetchPDFs(o.id);
+  });
+}, [offices.length]);
 
-  useEffect(() => {
-    offices.forEach(o => fetchPDFs(o.id));
-  }, [offices.length]);
+useEffect(() => {
+  const noAttachment = offices.filter(o => pdfMap[o.id] !== undefined && pdfMap[o.id].length === 0);
+  if (noAttachment.length > 0) {
+    setOpenPdfs(prev => {
+      const next = new Set(prev);
+      noAttachment.forEach(o => next.add(o.id));
+      return next;
+    });
+  }
+}, [pdfMap]);
 
   const togglePdf = async (id: string) => {
     const next = new Set(openPdfs);
