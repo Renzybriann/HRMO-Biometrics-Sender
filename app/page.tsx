@@ -270,6 +270,7 @@ export default function Dashboard() {
   const [activeTemplateId, setActiveTemplateId] = useState('default');
   const [scheduler, setScheduler] = useState<SchedulerConfig>({ enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
   const [labels, setLabels] = useState<CutoffLabel[]>([]);
+  const [scheduledOfficeIds, setScheduledOfficeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -296,6 +297,7 @@ export default function Dashboard() {
       setTemplates(setData.templates || []);
       setActiveTemplateId(setData.activeTemplateId || 'default');
       setScheduler(setData.scheduler || { enabled: true, dayOfMonth: 15, hour: 8, minute: 0 });
+      setScheduledOfficeIds(setData.scheduledOfficeIds || []);
       setLabels(Array.isArray(labData) ? labData : []);
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
@@ -436,7 +438,7 @@ export default function Dashboard() {
             <>
               {tab === 'offices' && <OfficesTab offices={offices} sendingId={sendingId} queueMap={queueMap} templates={templates} activeTemplateId={activeTemplateId} onSendOne={handleSendOne} onSendSelected={handleSendSelected} onRefresh={fetchAll} showToast={showToast} />}
               {tab === 'templates' && <TemplatesTab templates={templates} activeTemplateId={activeTemplateId} setActiveTemplateId={setActiveTemplateId} onRefresh={fetchAll} showToast={showToast} />}
-              {tab === 'scheduler' && <SchedulerTab scheduler={scheduler} setScheduler={setScheduler} autoSend={autoSend} onToggleAutoSend={handleToggleAutoSend} showToast={showToast} />}
+              {tab === 'scheduler' && <SchedulerTab scheduler={scheduler} setScheduler={setScheduler} autoSend={autoSend} onToggleAutoSend={handleToggleAutoSend} scheduledOfficeIds={scheduledOfficeIds} setScheduledOfficeIds={setScheduledOfficeIds} offices={offices} showToast={showToast} />}
               {tab === 'logs' && <LogsTab logs={logs} />}
               {tab === 'labels' && <LabelsTab labels={labels} onRefresh={fetchAll} showToast={showToast} />}
               {tab === 'admin' && <AdminTab showToast={showToast} />}
@@ -948,21 +950,38 @@ function TemplatesTab({ templates, activeTemplateId, setActiveTemplateId, onRefr
 }
 
 // ─── Scheduler Tab ────────────────────────────────────────────────────────────
-function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, showToast }: {
-  scheduler: SchedulerConfig; setScheduler: (s: SchedulerConfig) => void;
-  autoSend: boolean; onToggleAutoSend: () => void;
+// ─── Scheduler Tab ────────────────────────────────────────────────────────────
+function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, scheduledOfficeIds, setScheduledOfficeIds, offices, showToast }: {
+  scheduler: SchedulerConfig;
+  setScheduler: (s: SchedulerConfig) => void;
+  autoSend: boolean;
+  onToggleAutoSend: () => void;
+  scheduledOfficeIds: string[];
+  setScheduledOfficeIds: (ids: string[]) => void;
+  offices: Office[];
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }) {
   const [local, setLocal] = useState(scheduler);
+  const [localIds, setLocalIds] = useState<string[]>(scheduledOfficeIds);
   const [saving, setSaving] = useState(false);
-  useEffect(() => setLocal(scheduler), [scheduler]);
+  const [activeSection, setActiveSection] = useState<'schedule' | 'offices'>('schedule');
+
+  useEffect(() => { setLocal(scheduler); }, [scheduler]);
+  useEffect(() => { setLocalIds(scheduledOfficeIds); }, [scheduledOfficeIds]);
 
   const save = async () => {
     setSaving(true);
-    const res = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scheduler: local }) });
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduler: local, scheduledOfficeIds: localIds }),
+    });
     setSaving(false);
-    if (res.ok) { setScheduler(local); showToast('Schedule saved', 'success'); }
-    else showToast('Failed to save', 'error');
+    if (res.ok) {
+      setScheduler(local);
+      setScheduledOfficeIds(localIds);
+      showToast('Scheduler settings saved', 'success');
+    } else showToast('Failed to save', 'error');
   };
 
   const nextRunDate = () => {
@@ -973,66 +992,167 @@ function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, sho
   };
 
   const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const toggleOffice = (id: string) => {
+    const current = localIds.length === 0 ? offices.map(o => o.id) : [...localIds];
+    if (current.includes(id)) {
+      const next = current.filter(i => i !== id);
+      setLocalIds(next.length === offices.length ? [] : next);
+    } else {
+      const next = [...current, id];
+      setLocalIds(next.length === offices.length ? [] : next);
+    }
+  };
+
+  const isOfficeSelected = (id: string) => localIds.length === 0 || localIds.includes(id);
+  const selectedCount = localIds.length === 0 ? offices.length : localIds.length;
 
   return (
-    <div className="fade-up" style={{ maxWidth: 560 }}>
+    <div className="fade-up" style={{ maxWidth: 620 }}>
       <div className="card" style={{ padding: 28 }}>
+
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Calendar size={18} color="var(--yellow)" />
           </div>
           <div>
             <h2 style={{ fontWeight: 800, fontSize: 16, color: 'var(--navy)' }}>Auto-Send Schedule</h2>
-            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Configure when emails are automatically sent.</p>
+            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Configure when and to whom emails are automatically sent.</p>
           </div>
         </div>
 
-        {/* Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: autoSend ? 'var(--blue-pale)' : 'var(--gray-100)', borderRadius: 8, marginBottom: 20, cursor: 'pointer' }} onClick={onToggleAutoSend}>
+        {/* Auto-send toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: autoSend ? 'var(--blue-pale)' : 'var(--gray-100)', borderRadius: 8, marginBottom: 20, cursor: 'pointer' }}
+          onClick={onToggleAutoSend}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: autoSend ? 'var(--blue)' : 'var(--gray-700)' }}>Auto-Send</div>
-            <div style={{ fontSize: 12, color: autoSend ? 'var(--blue)' : 'var(--gray-500)', marginTop: 2 }}>{autoSend ? 'Emails will be sent automatically on schedule' : 'Auto-send is disabled — manual only'}</div>
+            <div style={{ fontSize: 12, color: autoSend ? 'var(--blue)' : 'var(--gray-500)', marginTop: 2 }}>
+              {autoSend ? 'Emails will be sent automatically on schedule' : 'Auto-send is disabled — manual only'}
+            </div>
           </div>
           {autoSend ? <ToggleRight size={28} color="var(--blue)" /> : <ToggleLeft size={28} color="var(--gray-400)" />}
         </div>
 
-        {/* Config */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: autoSend ? 1 : 0.5, pointerEvents: autoSend ? 'all' : 'none' }}>
-          <div>
-            <label className="label">Day of Month</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input type="range" min={1} max={31} value={local.dayOfMonth} onChange={e => setLocal({ ...local, dayOfMonth: +e.target.value })}
-                style={{ flex: 1, accentColor: 'var(--blue)' }} />
-              <div style={{ width: 56, textAlign: 'center', fontWeight: 800, fontSize: 18, color: 'var(--navy)' }}>{ordinal(local.dayOfMonth)}</div>
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Time</label>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Hour (0–23)</div>
-                <input type="number" min={0} max={23} className="input" value={local.hour} onChange={e => setLocal({ ...local, hour: Math.max(0, Math.min(23, +e.target.value)) })} />
-              </div>
-              <div style={{ fontSize: 20, color: 'var(--gray-300)', paddingTop: 18 }}>:</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Minute (0–59)</div>
-                <input type="number" min={0} max={59} className="input" value={local.minute} onChange={e => setLocal({ ...local, minute: Math.max(0, Math.min(59, +e.target.value)) })} />
-              </div>
-              <div style={{ paddingTop: 18, fontSize: 13, fontWeight: 700, color: 'var(--navy)', flexShrink: 0 }}>{pad(local.hour)}:{pad(local.minute)}</div>
-            </div>
-          </div>
-
-          {/* Next run preview */}
-          <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Next Scheduled Run</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{nextRunDate()}</div>
-            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 3 }}>Cron: <code style={{ fontSize: 11 }}>{local.minute} {local.hour} {local.dayOfMonth} * *</code></div>
-          </div>
+        {/* Section tabs */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--gray-100)', borderRadius: 8, padding: 4 }}>
+          {(['schedule', 'offices'] as const).map(s => (
+            <button key={s} onClick={() => setActiveSection(s)} style={{
+              flex: 1, padding: '8px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
+              background: activeSection === s ? '#fff' : 'transparent',
+              color: activeSection === s ? 'var(--navy)' : 'var(--gray-500)',
+              fontWeight: activeSection === s ? 700 : 500, fontSize: 13, fontFamily: 'inherit',
+              boxShadow: activeSection === s ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s',
+            }}>
+              {s === 'schedule' ? '🕐 Schedule' : `🏢 Offices (${selectedCount}/${offices.length})`}
+            </button>
+          ))}
         </div>
 
-        <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={save} disabled={saving}>
-          {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />} Save Schedule
+        {/* ── Schedule section ── */}
+        {activeSection === 'schedule' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: autoSend ? 1 : 0.5, pointerEvents: autoSend ? 'all' : 'none' }}>
+            <div>
+              <label className="label">Day of Month</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input type="range" min={1} max={31} value={local.dayOfMonth}
+                  onChange={e => setLocal({ ...local, dayOfMonth: +e.target.value })}
+                  style={{ flex: 1, accentColor: 'var(--blue)' }} />
+                <div style={{ width: 56, textAlign: 'center', fontWeight: 800, fontSize: 18, color: 'var(--navy)' }}>
+                  {ordinal(local.dayOfMonth)}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Time</label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Hour (0–23)</div>
+                  <input type="number" min={0} max={23} className="input" value={local.hour}
+                    onChange={e => setLocal({ ...local, hour: Math.max(0, Math.min(23, +e.target.value)) })} />
+                </div>
+                <div style={{ fontSize: 20, color: 'var(--gray-300)', paddingTop: 18 }}>:</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Minute (0–59)</div>
+                  <input type="number" min={0} max={59} className="input" value={local.minute}
+                    onChange={e => setLocal({ ...local, minute: Math.max(0, Math.min(59, +e.target.value)) })} />
+                </div>
+                <div style={{ paddingTop: 18, fontSize: 14, fontWeight: 800, color: 'var(--navy)', flexShrink: 0 }}>
+                  {pad(local.hour)}:{pad(local.minute)}
+                </div>
+              </div>
+            </div>
+
+            {/* Next run preview */}
+            <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Next Scheduled Run</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{nextRunDate()}</div>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 3 }}>
+                Cron: <code style={{ fontSize: 11 }}>{local.minute} {local.hour} {local.dayOfMonth} * *</code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Offices section ── */}
+        {activeSection === 'offices' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <p style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                Select which offices receive scheduled emails. Empty = all offices.
+              </p>
+              <button className="btn btn-ghost btn-sm" onClick={() => setLocalIds([])}>
+                Select All
+              </button>
+            </div>
+
+            {offices.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--gray-400)', fontSize: 13 }}>
+                No offices added yet.
+              </div>
+            ) : (
+              offices.map(office => {
+                const selected = isOfficeSelected(office.id);
+                return (
+                  <div key={office.id} onClick={() => toggleOffice(office.id)} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                    borderRadius: 8, border: `1.5px solid ${selected ? 'var(--blue)' : 'var(--gray-200)'}`,
+                    background: selected ? 'var(--blue-pale)' : '#fff',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 5,
+                      border: `2px solid ${selected ? 'var(--blue)' : 'var(--gray-300)'}`,
+                      background: selected ? 'var(--blue)' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      {selected && <CheckCircle size={11} color="#fff" />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)' }}>{office.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+                        {office.emails.join(', ')}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
+                      background: selected ? 'var(--blue)' : 'var(--gray-100)',
+                      color: selected ? '#fff' : 'var(--gray-400)',
+                    }}>
+                      {selected ? 'Scheduled' : 'Excluded'}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        <button className="btn btn-primary" style={{ marginTop: 24, width: '100%' }} onClick={save} disabled={saving}>
+          {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />} Save Scheduler Settings
         </button>
       </div>
     </div>

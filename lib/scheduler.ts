@@ -14,12 +14,18 @@ let currentTask: cron.ScheduledTask | null = null;
 let schedulerStarted = false;
 
 export async function sendToAllOffices(): Promise<{ sent: number; failed: number }> {
-  const [offices, settings, templates] = await Promise.all([
-    getOffices(),
-    getSettings(),
-    getTemplates(),
+  const [allOffices, settings, templates] = await Promise.all([
+  getOffices(),
+  getSettings(),
+  getTemplates(),
   ]);
   const template = await getActiveTemplate(settings, templates);
+
+  // If scheduledOfficeIds is set and non-empty, only send to those offices
+  const offices = settings.scheduledOfficeIds.length > 0
+    ? allOffices.filter(o => settings.scheduledOfficeIds.includes(o.id))
+    : allOffices;
+
   let sent = 0;
   let failed = 0;
 
