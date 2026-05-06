@@ -19,11 +19,30 @@ export interface SendLog {
 }
 
 export interface EmailTemplate {
+  id: string;
+  name: string;
   subject: string;
   body: string;
+  isDefault: boolean;
+  createdAt: string;
 }
 
-export const DEFAULT_TEMPLATE: EmailTemplate = {
+export interface SchedulerConfig {
+  enabled: boolean;
+  dayOfMonth: number;
+  hour: number;
+  minute: number;
+}
+
+export interface Settings {
+  autoSendEnabled: boolean;
+  activeTemplateId: string;
+  scheduler: SchedulerConfig;
+}
+
+const DEFAULT_TEMPLATE: EmailTemplate = {
+  id: 'default',
+  name: 'Default Template',
   subject: 'Biometrics Report – {{month}} | {{officeName}}',
   body: `Dear {{officeName}},
 
@@ -37,6 +56,15 @@ Thank you for your continued cooperation.
 
 Best regards,
 {{senderName}}`,
+  isDefault: true,
+  createdAt: new Date().toISOString(),
+};
+
+const DEFAULT_SCHEDULER: SchedulerConfig = {
+  enabled: true,
+  dayOfMonth: 15,
+  hour: 8,
+  minute: 0,
 };
 
 export function generateId(): string {
@@ -84,32 +112,99 @@ export async function deleteOffice(id: string): Promise<void> {
 
 export async function findOfficeById(id: string): Promise<Office | null> {
   const { data, error } = await supabase
-    .from('offices')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (error) return null;
+    .from('offices').select('*').eq('id', id).single();
+  if (error || !data) return null;
   return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at };
 }
 
 export async function findOfficeByName(name: string): Promise<Office | null> {
   const { data, error } = await supabase
-    .from('offices')
-    .select('*')
-    .ilike('name', name)
-    .single();
-  if (error) return null;
+    .from('offices').select('*').ilike('name', name).single();
+  if (error || !data) return null;
   return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at };
+}
+
+// --- Templates ---
+
+export async function getTemplates(): Promise<EmailTemplate[]> {
+  const { data, error } = await supabase
+    .from('templates')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data.map((t) => ({
+    id: t.id,
+    name: t.name,
+    subject: t.subject,
+    body: t.body,
+    isDefault: t.is_default,
+    createdAt: t.created_at,
+  }));
+}
+
+export async function addTemplate(template: EmailTemplate): Promise<void> {
+  const { error } = await supabase.from('templates').insert({
+    id: template.id,
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+    is_default: template.isDefault,
+    created_at: template.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateTemplate(template: Partial<EmailTemplate> & { id: string }): Promise<EmailTemplate> {
+  const update: Record<string, unknown> = {};
+  if (template.name !== undefined) update.name = template.name;
+  if (template.subject !== undefined) update.subject = template.subject;
+  if (template.body !== undefined) update.body = template.body;
+
+  const { data, error } = await supabase
+    .from('templates').update(update).eq('id', template.id).select().single();
+  if (error) throw new Error(error.message);
+  return { id: data.id, name: data.name, subject: data.subject, body: data.body, isDefault: data.is_default, createdAt: data.created_at };
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('templates').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getActiveTemplate(settings: Settings, templates: EmailTemplate[]): Promise<EmailTemplate> {
+  return templates.find(t => t.id === settings.activeTemplateId) ?? templates[0] ?? DEFAULT_TEMPLATE;
+}
+
+// --- Settings ---
+
+export async function getSettings(): Promise<Settings> {
+  const { data, error } = await supabase
+    .from('settings').select('*').eq('id', 1).single();
+  if (error || !data) {
+    return { autoSendEnabled: true, activeTemplateId: 'default', scheduler: DEFAULT_SCHEDULER };
+  }
+  return {
+    autoSendEnabled: data.auto_send_enabled,
+    activeTemplateId: data.active_template_id ?? 'default',
+    scheduler: { ...DEFAULT_SCHEDULER, ...(data.scheduler ?? {}) },
+  };
+}
+
+export async function updateSettings(patch: Partial<Settings>): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (patch.autoSendEnabled !== undefined) update.auto_send_enabled = patch.autoSendEnabled;
+  if (patch.activeTemplateId !== undefined) update.active_template_id = patch.activeTemplateId;
+  if (patch.scheduler !== undefined) update.scheduler = patch.scheduler;
+
+  const { error } = await supabase.from('settings').update(update).eq('id', 1);
+  if (error) throw new Error(error.message);
 }
 
 // --- Logs ---
 
 export async function getLogs(): Promise<SendLog[]> {
   const { data, error } = await supabase
-    .from('logs')
-    .select('*')
-    .order('sent_at', { ascending: false })
-    .limit(100);
+    .from('logs').select('*').order('sent_at', { ascending: false }).limit(100);
   if (error) throw new Error(error.message);
   return data.map((l) => ({
     id: l.id,
@@ -137,47 +232,11 @@ export async function addLog(log: SendLog): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// --- Settings ---
-
-export async function getSettings(): Promise<{
-  autoSendEnabled: boolean;
-  emailTemplate: EmailTemplate;
-}> {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('*')
-    .eq('id', 1)
-    .single();
-  if (error) {
-    return { autoSendEnabled: true, emailTemplate: DEFAULT_TEMPLATE };
-  }
-  return {
-    autoSendEnabled: data.auto_send_enabled,
-    emailTemplate: data.email_template ?? DEFAULT_TEMPLATE,
-  };
-}
-
-export async function updateSettings(settings: {
-  autoSendEnabled?: boolean;
-  emailTemplate?: EmailTemplate;
-}): Promise<void> {
-  const update: Record<string, unknown> = {};
-  if (settings.autoSendEnabled !== undefined)
-    update.auto_send_enabled = settings.autoSendEnabled;
-  if (settings.emailTemplate !== undefined)
-    update.email_template = settings.emailTemplate;
-
-  const { error } = await supabase.from('settings').update(update).eq('id', 1);
-  if (error) throw new Error(error.message);
-}
-
-// --- Supabase Storage (replaces local uploads folder) ---
+// --- Storage ---
 
 export async function getOfficePDFs(officeName: string): Promise<string[]> {
   const folder = encodeOfficeName(officeName);
-  const { data, error } = await supabase.storage
-    .from('biometrics-pdfs')
-    .list(folder);
+  const { data, error } = await supabase.storage.from('biometrics-pdfs').list(folder);
   if (error || !data) return [];
   return data
     .filter((f) => f.name.toLowerCase().endsWith('.pdf'))
@@ -185,36 +244,22 @@ export async function getOfficePDFs(officeName: string): Promise<string[]> {
 }
 
 export async function getPDFBuffer(storagePath: string): Promise<Buffer> {
-  const { data, error } = await supabase.storage
-    .from('biometrics-pdfs')
-    .download(storagePath);
+  const { data, error } = await supabase.storage.from('biometrics-pdfs').download(storagePath);
   if (error || !data) throw new Error(`Failed to download ${storagePath}`);
   return Buffer.from(await data.arrayBuffer());
 }
 
-export async function uploadPDF(
-  officeName: string,
-  fileName: string,
-  buffer: Buffer
-): Promise<void> {
+export async function uploadPDF(officeName: string, fileName: string, buffer: Buffer): Promise<void> {
   const folder = encodeOfficeName(officeName);
-  const { error } = await supabase.storage
-    .from('biometrics-pdfs')
-    .upload(`${folder}/${fileName}`, buffer, {
-      contentType: 'application/pdf',
-      upsert: true,
-    });
+  const { error } = await supabase.storage.from('biometrics-pdfs').upload(
+    `${folder}/${fileName}`, buffer, { contentType: 'application/pdf', upsert: true }
+  );
   if (error) throw new Error(error.message);
 }
 
-export async function deletePDF(
-  officeName: string,
-  fileName: string
-): Promise<void> {
+export async function deletePDF(officeName: string, fileName: string): Promise<void> {
   const folder = encodeOfficeName(officeName);
-  const { error } = await supabase.storage
-    .from('biometrics-pdfs')
-    .remove([`${folder}/${fileName}`]);
+  const { error } = await supabase.storage.from('biometrics-pdfs').remove([`${folder}/${fileName}`]);
   if (error) throw new Error(error.message);
 }
 
@@ -234,6 +279,5 @@ export async function listPDFsWithMeta(officeName: string) {
 }
 
 function encodeOfficeName(name: string): string {
-  // Safe folder name for Supabase storage paths
   return name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 }

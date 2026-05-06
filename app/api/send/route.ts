@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getOffices,
   findOfficeById,
-  getOfficePDFs,
   getSettings,
+  getTemplates,
+  getActiveTemplate,
+  getOfficePDFs,
   addLog,
   generateId,
 } from '@/lib/store';
@@ -19,14 +21,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { officeId } = body;
 
-    const [allOffices, { emailTemplate }] = await Promise.all([
+    const [allOffices, settings, templates] = await Promise.all([
       getOffices(),
       getSettings(),
+      getTemplates(),
     ]);
 
-    const targets = officeId
-      ? allOffices.filter((o) => o.id === officeId)
-      : allOffices;
+    const template = await getActiveTemplate(settings, templates);
+    const targets = officeId ? allOffices.filter(o => o.id === officeId) : allOffices;
 
     if (targets.length === 0) {
       return NextResponse.json({ error: 'No offices found' }, { status: 404 });
@@ -51,23 +53,13 @@ export async function POST(req: NextRequest) {
           filesCount: 0,
           error: 'No PDF files uploaded for this office',
         });
-        results.push({
-          office: office.name,
-          status: 'failed',
-          error: 'No PDF files uploaded for this office',
-        });
+        results.push({ office: office.name, status: 'failed', error: 'No PDF files uploaded for this office' });
         failed++;
         continue;
       }
 
       try {
-        await sendBiometricsEmail({
-          to: office.emails,
-          officeName: office.name,
-          pdfPaths,
-          template: emailTemplate,
-        });
-
+        await sendBiometricsEmail({ to: office.emails, officeName: office.name, pdfPaths, template });
         await addLog({
           id: generateId(),
           officeId: office.id,
