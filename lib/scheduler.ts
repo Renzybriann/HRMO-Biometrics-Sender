@@ -117,3 +117,20 @@ export async function startScheduler(): Promise<void> {
   await scheduleFromConfig();
   console.log('[Scheduler] Started');
 }
+
+export async function shouldSendToday(): Promise<boolean> {
+  const settings = await getSettings();
+  if (!settings.autoSendEnabled || !settings.scheduler.enabled) return false;
+
+  // Use Philippine time (UTC+8)
+  const now = new Date();
+  const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+
+  const dayMatch = phTime.getDate() === settings.scheduler.dayOfMonth;
+  const hourMatch = phTime.getHours() === settings.scheduler.hour;
+  const minuteMatch = phTime.getMinutes() === settings.scheduler.minute;
+
+  console.log(`[Scheduler] PH Time: ${phTime.toLocaleString()} | Day: ${phTime.getDate()}==${settings.scheduler.dayOfMonth} | Hour: ${phTime.getHours()}==${settings.scheduler.hour} | Minute: ${phTime.getMinutes()}==${settings.scheduler.minute}`);
+
+  return dayMatch && hourMatch && minuteMatch;
+}

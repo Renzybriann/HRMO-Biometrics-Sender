@@ -985,11 +985,17 @@ function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, sch
   };
 
   const nextRunDate = () => {
-    const now = new Date();
-    let d = new Date(now.getFullYear(), now.getMonth(), local.dayOfMonth, local.hour, local.minute);
-    if (d <= now) d = new Date(now.getFullYear(), now.getMonth() + 1, local.dayOfMonth, local.hour, local.minute);
-    return d.toLocaleString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), local.dayOfMonth, local.hour, local.minute);
+  
+  // If this month's scheduled time hasn't passed yet, show it
+  // If it has passed, show next month
+  const target = d.getTime() > now.getTime()
+    ? d
+    : new Date(now.getFullYear(), now.getMonth() + 1, local.dayOfMonth, local.hour, local.minute);
+
+  return target.toLocaleString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
   const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
   const pad = (n: number) => String(n).padStart(2, '0');
