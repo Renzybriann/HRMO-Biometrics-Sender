@@ -995,18 +995,25 @@ function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, sch
   const pad = (n: number) => String(n).padStart(2, '0');
 
   const toggleOffice = (id: string) => {
-    const current = localIds.length === 0 ? offices.map(o => o.id) : [...localIds];
-    if (current.includes(id)) {
-      const next = current.filter(i => i !== id);
-      setLocalIds(next.length === offices.length ? [] : next);
-    } else {
-      const next = [...current, id];
-      setLocalIds(next.length === offices.length ? [] : next);
-    }
-  };
+  if (noneSelected) {
+    // Start fresh with just this one selected
+    setLocalIds([id]);
+    return;
+  }
+  const current = localIds.length === 0 ? offices.map(o => o.id) : [...localIds];
+  if (current.includes(id)) {
+    const next = current.filter(i => i !== id);
+    if (next.length === 0) { setLocalIds(['__none__']); return; }
+    setLocalIds(next.length === offices.length ? [] : next);
+  } else {
+    const next = [...current, id];
+    setLocalIds(next.length === offices.length ? [] : next);
+  }
+};
 
-  const isOfficeSelected = (id: string) => localIds.length === 0 || localIds.includes(id);
-  const selectedCount = localIds.length === 0 ? offices.length : localIds.length;
+  const noneSelected = localIds.length === 1 && localIds[0] === '__none__';
+  const isOfficeSelected = (id: string) => !noneSelected && (localIds.length === 0 || localIds.includes(id));
+  const selectedCount = noneSelected ? 0 : localIds.length === 0 ? offices.length : localIds.length;
 
   return (
     <div className="fade-up" style={{ maxWidth: 620 }}>
@@ -1104,9 +1111,14 @@ function SchedulerTab({ scheduler, setScheduler, autoSend, onToggleAutoSend, sch
               <p style={{ fontSize: 12, color: 'var(--gray-500)' }}>
                 Select which offices receive scheduled emails. Empty = all offices.
               </p>
-              <button className="btn btn-ghost btn-sm" onClick={() => setLocalIds([])}>
-                Select All
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setLocalIds([])}>
+                  Select All
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setLocalIds(['__none__'])}>
+                  Deselect All
+                </button>
+              </div>
             </div>
 
             {offices.length === 0 ? (

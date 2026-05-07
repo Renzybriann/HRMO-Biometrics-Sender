@@ -22,9 +22,12 @@ export async function sendToAllOffices(): Promise<{ sent: number; failed: number
   const template = await getActiveTemplate(settings, templates);
 
   // If scheduledOfficeIds is set and non-empty, only send to those offices
-  const offices = settings.scheduledOfficeIds.length > 0
-    ? allOffices.filter(o => settings.scheduledOfficeIds.includes(o.id))
-    : allOffices;
+  const noneSelected = settings.scheduledOfficeIds.length === 1 && settings.scheduledOfficeIds[0] === '__none__';
+  const offices = noneSelected
+    ? [] // send to nobody
+    : settings.scheduledOfficeIds.length > 0
+      ? allOffices.filter(o => settings.scheduledOfficeIds.includes(o.id))
+      : allOffices;
 
   let sent = 0;
   let failed = 0;
