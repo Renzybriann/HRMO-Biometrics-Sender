@@ -289,10 +289,9 @@ function encodeOfficeName(name: string): string {
 
 export interface CutoffLabel {
   id: string;
-  name: string;
+  startDate: string; // ISO date e.g. "2026-05-01"
+  endDate: string;   // ISO date e.g. "2026-05-15"
   url: string;
-  year: number;
-  sortOrder: number;
   createdAt: string;
 }
 
@@ -300,15 +299,13 @@ export async function getLabels(): Promise<CutoffLabel[]> {
   const { data, error } = await supabase
     .from('labels')
     .select('*')
-    .order('year', { ascending: false })
-    .order('sort_order', { ascending: true });
+    .order('start_date', { ascending: true });
   if (error) throw new Error(error.message);
   return data.map((l) => ({
     id: l.id,
-    name: l.name,
+    startDate: l.start_date,
+    endDate: l.end_date,
     url: l.url,
-    year: l.year,
-    sortOrder: l.sort_order,
     createdAt: l.created_at,
   }));
 }
@@ -316,10 +313,9 @@ export async function getLabels(): Promise<CutoffLabel[]> {
 export async function addLabel(label: CutoffLabel): Promise<void> {
   const { error } = await supabase.from('labels').insert({
     id: label.id,
-    name: label.name,
+    start_date: label.startDate,
+    end_date: label.endDate,
     url: label.url,
-    year: label.year,
-    sort_order: label.sortOrder,
     created_at: label.createdAt,
   });
   if (error) throw new Error(error.message);
@@ -327,10 +323,9 @@ export async function addLabel(label: CutoffLabel): Promise<void> {
 
 export async function updateLabel(label: Partial<CutoffLabel> & { id: string }): Promise<void> {
   const update: Record<string, unknown> = {};
-  if (label.name !== undefined) update.name = label.name;
+  if (label.startDate !== undefined) update.start_date = label.startDate;
+  if (label.endDate !== undefined) update.end_date = label.endDate;
   if (label.url !== undefined) update.url = label.url;
-  if (label.year !== undefined) update.year = label.year;
-  if (label.sortOrder !== undefined) update.sort_order = label.sortOrder;
   const { error } = await supabase.from('labels').update(update).eq('id', label.id);
   if (error) throw new Error(error.message);
 }

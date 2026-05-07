@@ -22,19 +22,18 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, url, year, sortOrder } = await req.json();
-    if (!name || !url || !year) {
+    const { startDate, endDate, url } = await req.json();
+    if (!startDate || !endDate || !url) {
       return NextResponse.json(
-        { error: 'name, url and year are required' },
+        { error: 'startDate, endDate and url are required' },
         { status: 400 }
       );
     }
     const label: CutoffLabel = {
       id: generateId(),
-      name: name.trim(),
+      startDate,
+      endDate,
       url: url.trim(),
-      year: Number(year),
-      sortOrder: sortOrder ?? 0,
       createdAt: new Date().toISOString(),
     };
     await addLabel(label);
@@ -49,11 +48,11 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { id, name, url, year, sortOrder } = await req.json();
+    const { id, startDate, endDate, url } = await req.json();
     if (!id) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
-    await updateLabel({ id, name, url, year: year ? Number(year) : undefined, sortOrder });
+    await updateLabel({ id, startDate, endDate, url });
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json(
