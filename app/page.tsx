@@ -7,8 +7,9 @@ import {
   ChevronDown, ChevronUp, X, Edit2, Save, AlertCircle, Paperclip,
   Eye, EyeOff, Shield, Pencil, Info, Minimize2, Maximize2,
   Layers, StopCircle, RotateCcw, Square, CheckSquare, Calendar,
-  BookTemplate, Copy, Trash, BookOpen, Link, ExternalLink
+  BookTemplate, Copy, Trash, BookOpen, Link, ExternalLink,LogOut
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase-client';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Office { id: string; name: string; emails: string[]; createdAt: string; }
@@ -139,6 +140,35 @@ function Sidebar({ active, onChange, logCount }: { active: Tab; onChange: (t: Ta
           </button>
         ))}
       </nav>
+
+      {/* Logout button */}
+      <div style={{ padding: '16px 10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <button
+          onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            window.location.href = '/login';
+          }}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px', borderRadius: 8, border: 'none',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.5)',
+            cursor: 'pointer', fontSize: 13, fontWeight: 500,
+            fontFamily: 'inherit', transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(220,38,38,0.2)';
+            (e.currentTarget as HTMLButtonElement).style.color = '#fca5a5';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
+            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)';
+          }}>
+          <LogOut size={16} style={{ opacity: 0.7 }} />
+          <span>Sign Out</span>
+        </button>
+      </div>
     </aside>
   );
 }
