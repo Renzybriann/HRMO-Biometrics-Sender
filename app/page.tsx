@@ -335,6 +335,35 @@ export default function Dashboard() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+// ── Auto logout after 10 minutes of inactivity ──────────────────────────────
+useEffect(() => {
+  const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  let timer: ReturnType<typeof setTimeout>;
+
+  const resetTimer = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+    }, TIMEOUT_MS);
+  };
+
+  // Events that count as activity
+  const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+  events.forEach(e => window.addEventListener(e, resetTimer));
+
+  // Start the timer on mount
+  resetTimer();
+
+  return () => {
+    clearTimeout(timer);
+    events.forEach(e => window.removeEventListener(e, resetTimer));
+  };
+}, []);
+
+  
+
   const runCountdown = async (seconds: number) => {
     for (let i = seconds; i > 0; i--) {
       if (abortRef.current) break;
