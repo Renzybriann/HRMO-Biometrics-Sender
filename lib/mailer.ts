@@ -77,9 +77,7 @@ export async function sendBiometricsEmail({
 
       <!-- Footer -->
       <div style="background:#f1f5f9;padding:18px 36px;border-top:1px solid #cbd5f5;display:flex;align-items:center;justify-content:space-between;">
-        <p style="margin:0;font-size:11px;color:#64748b;">
-          This is an automated message. Please do not reply directly to this email.
-        </p>
+       
         <p style="margin:0;font-size:11px;color:#334155;font-weight:600;">
           HRMO
         </p>
