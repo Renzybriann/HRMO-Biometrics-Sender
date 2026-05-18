@@ -12,7 +12,7 @@ import {
 import { createClient } from '@/lib/supabase-client';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-interface Office { id: string; name: string; emails: string[]; createdAt: string; }
+interface Office { id: string; name: string; emails: string[]; createdAt: string; sortOrder: number; }
 interface SendLog { id: string; officeId: string; officeName: string; email: string; sentAt: string; status: 'success' | 'failed'; filesCount: number; error?: string; }
 interface PDFFile { name: string; size: number; uploadedAt: string; }
 interface EmailTemplate { id: string; name: string; subject: string; body: string; isDefault: boolean; createdAt: string; }
@@ -492,6 +492,7 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
   const [formName, setFormName] = useState('');
   const [formEmails, setFormEmails] = useState<string[]>(['']);
   const [formError, setFormError] = useState('');
+  const [formSortOrder, setFormSortOrder] = useState<number>(0);
   const [pdfMap, setPdfMap] = useState<Record<string, PDFFile[]>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -557,20 +558,22 @@ useEffect(() => {
     else setSelected(new Set(offices.map(o => o.id)));
   };
 
-  const resetForm = () => { setFormName(''); setFormEmails(['']); setFormError(''); };
+const resetForm = () => { setFormName(''); setFormEmails(['']); setFormError(''); setFormSortOrder(0); };
 
   const saveOffice = async (isEdit: boolean, officeId?: string) => {
-    setFormError('');
-    const cleanEmails = formEmails.map(e => e.trim()).filter(Boolean);
-    if (!formName.trim() || cleanEmails.length === 0) { setFormError('Name and at least one email required.'); return; }
-    const method = isEdit ? 'PUT' : 'POST';
-    const body = isEdit ? { id: officeId, name: formName.trim(), emails: cleanEmails } : { name: formName.trim(), emails: cleanEmails };
-    const res = await fetch('/api/offices', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) { const e = await res.json(); setFormError(e.error || 'Failed'); return; }
-    resetForm(); setShowAdd(false); setEditId(null);
-    await onRefresh();
-    showToast(isEdit ? 'Office updated' : 'Office added', 'success');
-  };
+  setFormError('');
+  const cleanEmails = formEmails.map(e => e.trim()).filter(Boolean);
+  if (!formName.trim() || cleanEmails.length === 0) { setFormError('Name and at least one email required.'); return; }
+  const method = isEdit ? 'PUT' : 'POST';
+  const body = isEdit 
+    ? { id: officeId, name: formName.trim(), emails: cleanEmails, sortOrder: formSortOrder } // ← ADD sortOrder
+    : { name: formName.trim(), emails: cleanEmails };
+  const res = await fetch('/api/offices', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); setFormError(e.error || 'Failed'); return; }
+  resetForm(); setShowAdd(false); setEditId(null);
+  await onRefresh();
+  showToast(isEdit ? 'Office updated' : 'Office added', 'success');
+};
 
   const deleteOffice = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"?`)) return;
@@ -699,15 +702,22 @@ useEffect(() => {
               </button>
 
               {editId === office.id ? (
-                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-                  <div><label className="label">Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} /></div>
-                  <div><label className="label">Email(s)</label><EmailList emails={formEmails} onChange={setFormEmails} /></div>
-                  {formError && <div style={{ color: 'var(--danger)', fontSize: 12 }}>{formError}</div>}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => saveOffice(true, office.id)}><Save size={12} /> Save</button>
-                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setEditId(null); resetForm(); }}><X size={13} /></button>
-                  </div>
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                <div><label className="label">Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} /></div>
+                <div><label className="label">Email(s)</label><EmailList emails={formEmails} onChange={setFormEmails} /></div>
+                <div>
+                  <label className="label">Send Order</label>
+                  <input className="input" type="number" min={1} value={formSortOrder}
+                    onChange={e => setFormSortOrder(Number(e.target.value))}
+                    placeholder="1 = first to send" />
+                  <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 3 }}>Lower number = sent first</div>
                 </div>
+                {formError && <div style={{ color: 'var(--danger)', fontSize: 12 }}>{formError}</div>}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => saveOffice(true, office.id)}><Save size={12} /> Save</button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setEditId(null); resetForm(); }}><X size={13} /></button>
+                </div>
+              </div>
               ) : (
                 <>
                   {/* Card header */}
@@ -721,7 +731,7 @@ useEffect(() => {
                         {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
                       </button>
                       <button className="btn btn-icon btn-sm" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 6 }}
-                        onClick={() => { setEditId(office.id); setFormName(office.name); setFormEmails([...(office.emails ?? [''])]); setFormError(''); }}>
+                        onClick={() => { setEditId(office.id); setFormName(office.name); setFormEmails([...(office.emails ?? [''])]); setFormError('');  setFormSortOrder(office.sortOrder ?? 0); }}>
                         <Edit2 size={12} />
                       </button>
                       <button className="btn btn-icon btn-sm" style={{ background: 'rgba(220,38,38,0.25)', color: '#fca5a5', borderRadius: 6 }} onClick={() => deleteOffice(office.id, office.name)}>
@@ -732,13 +742,21 @@ useEffect(() => {
 
                   {/* Collapsed */}
                   {isCollapsed ? (
-                    <div style={{ padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 6 }} onClick={() => toggleCollapse(office.id)}>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--navy)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{office.name}</span>
-                      {qItem && <span style={{ fontSize: 10, fontWeight: 700, color: qColors[qItem.status] }}>{qItem.status}</span>}
+                  <div style={{ padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 6 }} onClick={() => toggleCollapse(office.id)}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{office.sortOrder}</span>
                     </div>
+                    <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--navy)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{office.name}</span>
+                    {qItem && <span style={{ fontSize: 10, fontWeight: 700, color: qColors[qItem.status] }}>{qItem.status}</span>}
+                  </div>
                   ) : (
                     <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 9 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', lineHeight: 1.3 }}>{office.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 4, background: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{office.sortOrder}</span>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', lineHeight: 1.3 }}>{office.name}</div>
+                      </div>
 
                       {/* Queue status */}
                       {qItem && qItem.status !== 'pending' && (

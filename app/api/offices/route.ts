@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   try {
     const { error: authError } = await requireAuth();
     if (authError) return authError;
-    
+
     const { name, emails } = await req.json();
     if (!name || !emails || !Array.isArray(emails) || emails.length === 0) {
       return NextResponse.json(
@@ -44,11 +44,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Office name already exists' }, { status: 400 });
     }
 
+    // Get highest sort_order and add 1
+    const existingOffices = await getOffices();
+    const maxOrder = existingOffices.reduce((max, o) => Math.max(max, o.sortOrder), 0);
+
     const newOffice: Office = {
       id: generateId(),
       name: name.trim(),
       emails: emails.map((e: string) => e.trim()).filter(Boolean),
       createdAt: new Date().toISOString(),
+      sortOrder: maxOrder + 1, // ← auto-assigned
     };
 
     await addOffice(newOffice);
@@ -65,8 +70,8 @@ export async function PUT(req: NextRequest) {
   try {
     const { error: authError } = await requireAuth();
     if (authError) return authError;
-    
-    const { id, name, emails } = await req.json();
+
+    const { id, name, emails, sortOrder } = await req.json(); // ← sortOrder here
     if (!id || !name || !emails || !Array.isArray(emails) || emails.length === 0) {
       return NextResponse.json(
         { error: 'id, name and at least one email are required' },
@@ -83,6 +88,7 @@ export async function PUT(req: NextRequest) {
       ...office,
       name: name.trim(),
       emails: emails.map((e: string) => e.trim()).filter(Boolean),
+      sortOrder: sortOrder !== undefined ? Number(sortOrder) : office.sortOrder, // ← use existing if not provided
     };
 
     await updateOffice(updated);

@@ -5,6 +5,7 @@ export interface Office {
   name: string;
   emails: string[];
   createdAt: string;
+  sortOrder: number;
 }
 
 export interface SendLog {
@@ -78,13 +79,14 @@ export async function getOffices(): Promise<Office[]> {
   const { data, error } = await supabase
     .from('offices')
     .select('*')
-    .order('created_at', { ascending: true });
+    .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
   return data.map((o) => ({
     id: o.id,
     name: o.name,
     emails: o.emails,
     createdAt: o.created_at,
+    sortOrder: o.sort_order ?? 0,
   }));
 }
 
@@ -94,6 +96,7 @@ export async function addOffice(office: Office): Promise<void> {
     name: office.name,
     emails: office.emails,
     created_at: office.createdAt,
+    sort_order: office.sortOrder ?? 0,
   });
   if (error) throw new Error(error.message);
 }
@@ -101,7 +104,7 @@ export async function addOffice(office: Office): Promise<void> {
 export async function updateOffice(office: Office): Promise<void> {
   const { error } = await supabase
     .from('offices')
-    .update({ name: office.name, emails: office.emails })
+    .update({ name: office.name, emails: office.emails, sort_order: office.sortOrder })
     .eq('id', office.id);
   if (error) throw new Error(error.message);
 }
@@ -115,14 +118,14 @@ export async function findOfficeById(id: string): Promise<Office | null> {
   const { data, error } = await supabase
     .from('offices').select('*').eq('id', id).single();
   if (error || !data) return null;
-  return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at };
+  return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at, sortOrder: data.sort_order ?? 0 };
 }
 
 export async function findOfficeByName(name: string): Promise<Office | null> {
   const { data, error } = await supabase
     .from('offices').select('*').ilike('name', name).single();
   if (error || !data) return null;
-  return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at };
+  return { id: data.id, name: data.name, emails: data.emails, createdAt: data.created_at, sortOrder: data.sort_order ?? 0 };
 }
 
 // --- Templates ---
