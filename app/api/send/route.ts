@@ -10,6 +10,7 @@ import {
   generateId,
 } from '@/lib/store';
 import { sendBiometricsEmail, verifyConnection } from '@/lib/mailer';
+import { requireAuth } from '@/lib/auth-guard';
 
 export async function POST(req: NextRequest) {
   try {

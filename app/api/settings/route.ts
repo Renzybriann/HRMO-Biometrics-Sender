@@ -10,9 +10,13 @@ import {
   generateId,
   EmailTemplate,
 } from '@/lib/store';
+import { requireAuth } from '@/lib/auth-guard';
 
 export async function GET() {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const [settings, logs, templates] = await Promise.all([
       getSettings(),
       getLogs(),
@@ -36,6 +40,9 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const body = await req.json();
     const patch: Parameters<typeof updateSettings>[0] = {};
 
@@ -70,6 +77,9 @@ export async function PATCH(req: NextRequest) {
 // POST — create new template
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const body = await req.json();
     const { name, subject, body: bodyText } = body;
     if (!name || !subject || !bodyText) {
@@ -101,6 +111,9 @@ export async function POST(req: NextRequest) {
 // PUT — update existing template
 export async function PUT(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const body = await req.json();
     const { id, name, subject, body: bodyText } = body;
     if (!id) {
@@ -120,6 +133,9 @@ export async function PUT(req: NextRequest) {
 // DELETE — delete template (not default)
 export async function DELETE(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) {

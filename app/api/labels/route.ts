@@ -7,9 +7,13 @@ import {
   generateId,
   CutoffLabel,
 } from '@/lib/store';
+import { requireAuth } from '@/lib/auth-guard';
 
 export async function GET() {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const labels = await getLabels();
     return NextResponse.json(labels);
   } catch (err) {
@@ -22,6 +26,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { startDate, endDate, url } = await req.json();
     if (!startDate || !endDate || !url) {
       return NextResponse.json(
@@ -48,6 +55,9 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { id, startDate, endDate, url } = await req.json();
     if (!id) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
@@ -64,6 +74,9 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) {

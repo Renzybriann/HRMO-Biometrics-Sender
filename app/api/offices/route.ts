@@ -9,9 +9,13 @@ import {
   generateId,
   Office,
 } from '@/lib/store';
+import { requireAuth } from '@/lib/auth-guard';
 
 export async function GET() {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const offices = await getOffices();
     return NextResponse.json(offices);
   } catch (err) {
@@ -24,6 +28,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+    
     const { name, emails } = await req.json();
     if (!name || !emails || !Array.isArray(emails) || emails.length === 0) {
       return NextResponse.json(
@@ -56,6 +63,9 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+    
     const { id, name, emails } = await req.json();
     if (!id || !name || !emails || !Array.isArray(emails) || emails.length === 0) {
       return NextResponse.json(
@@ -87,6 +97,9 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+    
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) {

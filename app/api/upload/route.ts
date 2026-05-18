@@ -7,9 +7,13 @@ import {
   listPDFsWithMeta,
   getOfficePDFs,
 } from '@/lib/store';
+import { requireAuth } from '@/lib/auth-guard';
 
 export async function GET(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { searchParams } = new URL(req.url);
     const officeId = searchParams.get('officeId');
     if (!officeId) {
@@ -32,6 +36,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const formData = await req.formData();
     const officeId = formData.get('officeId') as string;
     const files = formData.getAll('files') as File[];
@@ -68,6 +75,9 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+    
     const { searchParams } = new URL(req.url);
     const officeId = searchParams.get('officeId');
     const fileName = searchParams.get('file');
