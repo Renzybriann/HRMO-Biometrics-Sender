@@ -501,8 +501,8 @@ function OfficesTab({ offices, sendingId, queueMap, templates, activeTemplateId,
   // Bulk controls
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openPdfs, setOpenPdfs] = useState<Set<string>>(new Set());
-  const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
-  const allCollapsed = offices.length > 0 && collapsedCards.size === offices.length;
+  const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set<string>(['__all__']));
+  const allCollapsed = offices.length > 0 && offices.every(o => collapsedCards.has(o.id));
   const allSelected = offices.length > 0 && selected.size === offices.length;
 
   const fetchPDFs = async (id: string) => {
@@ -517,6 +517,13 @@ useEffect(() => {
   offices.forEach(async (o) => {
     await fetchPDFs(o.id);
   });
+}, [offices.length]);
+
+// Collapse all cards by default on load
+useEffect(() => {
+  if (offices.length > 0) {
+    setCollapsedCards(new Set(offices.map(o => o.id)));
+  }
 }, [offices.length]);
 
 useEffect(() => {
