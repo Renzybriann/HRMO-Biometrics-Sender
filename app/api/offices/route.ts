@@ -71,7 +71,7 @@ export async function PUT(req: NextRequest) {
     const { error: authError } = await requireAuth();
     if (authError) return authError;
 
-    const { id, name, emails, sortOrder } = await req.json(); // ← sortOrder here
+    const { id, name, emails, sortOrder } = await req.json();
     if (!id || !name || !emails || !Array.isArray(emails) || emails.length === 0) {
       return NextResponse.json(
         { error: 'id, name and at least one email are required' },
@@ -88,7 +88,7 @@ export async function PUT(req: NextRequest) {
       ...office,
       name: name.trim(),
       emails: emails.map((e: string) => e.trim()).filter(Boolean),
-      sortOrder: sortOrder !== undefined ? Number(sortOrder) : office.sortOrder, // ← use existing if not provided
+      sortOrder: sortOrder !== undefined ? Number(sortOrder) : office.sortOrder,
     };
 
     await updateOffice(updated);

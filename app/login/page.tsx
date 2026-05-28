@@ -12,19 +12,29 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [attempts, setAttempts] = useState(0);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  e.preventDefault();
+  setError('');
+  setLoading(true);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const supabase = createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     setLoading(false);
 
     if (error) {
-      setError('Invalid email or password. Please try again.');
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+
+      if (newAttempts >= 5) {
+        setError('Too many failed attempts. Please wait a few minutes before trying again.');
+      } else if (newAttempts >= 3) {
+        setError(`Invalid email or password. ${5 - newAttempts} attempt${5 - newAttempts === 1 ? '' : 's'} remaining.`);
+      } else {
+        setError('Invalid email or password. Please try again.');
+      }
       return;
     }
 
@@ -126,22 +136,39 @@ export default function LoginPage() {
 
               {/* Error */}
               {error && (
-                <div style={{
-                  background: 'var(--danger-bg)',
-                  border: '1px solid var(--danger)',
-                  borderRadius: 8,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  color: 'var(--danger)',
-                  fontWeight: 500,
-                }}>
-                  <AlertCircle size={14} style={{ flexShrink: 0 }} />
+              <div style={{
+                background: 'var(--danger-bg)',
+                border: '1px solid var(--danger)',
+                borderRadius: 8,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                color: 'var(--danger)',
+                fontWeight: 500,
+              }}>
+                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
                   {error}
+                  {/* Attempt dots */}
+                  {attempts > 0 && attempts < 5 && (
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <div key={n} style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: n <= attempts ? 'var(--danger)' : 'rgba(220,38,38,0.2)',
+                          transition: 'background 0.2s',
+                        }} />
+                      ))}
+                      <span style={{ fontSize: 10, color: 'var(--danger)', marginLeft: 4 }}>
+                        {attempts}/5 attempts
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
 
               {/* Submit */}
               <button

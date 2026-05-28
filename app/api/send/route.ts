@@ -14,6 +14,9 @@ import { requireAuth } from '@/lib/auth-guard';
 
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const ok = await verifyConnection();
     if (!ok) {
       return NextResponse.json({ error: 'SMTP connection failed' }, { status: 500 });
