@@ -1,63 +1,18 @@
 import { supabase } from './supabase';
-
-export interface Office {
-  id: string;
-  name: string;
-  emails: string[];
-  createdAt: string;
-  sortOrder: number;
-}
-
-export interface SendLog {
-  id: string;
-  officeId: string;
-  officeName: string;
-  email: string;
-  sentAt: string;
-  status: 'success' | 'failed';
-  filesCount: number;
-  error?: string;
-}
-
-export interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-  isDefault: boolean;
-  createdAt: string;
-}
-
-export interface SchedulerConfig {
-  enabled: boolean;
-  dayOfMonth: number;
-  hour: number;
-  minute: number;
-}
-
-export interface Settings {
-  autoSendEnabled: boolean;
-  activeTemplateId: string;
-  scheduler: SchedulerConfig;
-  scheduledOfficeIds: string[];
-}
+import type { CutoffLabel, EmailTemplate, Office, SchedulerConfig, SendLog, Settings } from './types';
+export type { CutoffLabel, EmailTemplate, Office, SchedulerConfig, SendLog, Settings } from './types';
 
 const DEFAULT_TEMPLATE: EmailTemplate = {
   id: 'default',
-  name: 'Default Template',
-  subject: 'Biometrics Report – {{month}} | {{officeName}}',
-  body: `Dear {{officeName}},
+  name: 'HRMO Biometric Attendance',
+  subject: 'Biometric Attendance Data – {{period}} | {{officeName}}',
+  body: `Good day!
 
-Please find attached the biometrics report(s) for the current period ({{month}}).
+The biometric raw attendance data for your office covering **{{period}}** is attached to this email.
 
-Kindly review the attached document(s) at your earliest convenience and ensure that all records are properly acknowledged.
+Please download the attached attendance data and use it for the encoding and preparation of the **Daily Time Record (DTR)** of your personnel.
 
-If you have any questions or discrepancies to report, please do not hesitate to reach out to us directly.
-
-Thank you for your continued cooperation.
-
-Best regards,
-{{senderName}}`,
+Kindly acknowledge receipt of this email upon receiving the attachment.`,
   isDefault: true,
   createdAt: new Date().toISOString(),
 };
@@ -67,6 +22,7 @@ const DEFAULT_SCHEDULER: SchedulerConfig = {
   dayOfMonth: 15,
   hour: 8,
   minute: 0,
+  sendIntervalSeconds: 30,
 };
 
 export function generateId(): string {
@@ -202,17 +158,37 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   if (patch.scheduler !== undefined) update.scheduler = patch.scheduler;
   if (patch.scheduledOfficeIds !== undefined) update.scheduled_office_ids = patch.scheduledOfficeIds;
 
-  const { error } = await supabase.from('settings').update(update).eq('id', 1);
+  const { data, error } = await supabase
+    .from('settings')
+    .update(update)
+    .eq('id', 1)
+    .select('id');
   if (error) throw new Error(error.message);
+  if (data && data.length > 0) return;
+
+  const { error: insertError } = await supabase.from('settings').insert({
+    id: 1,
+    auto_send_enabled: patch.autoSendEnabled ?? true,
+    active_template_id: patch.activeTemplateId ?? 'default',
+    scheduler: patch.scheduler ?? DEFAULT_SCHEDULER,
+    scheduled_office_ids: patch.scheduledOfficeIds ?? [],
+  });
+  if (insertError) throw new Error(insertError.message);
 }
 
 // --- Logs ---
 
-export async function getLogs(): Promise<SendLog[]> {
-  const { data, error } = await supabase
-    .from('logs').select('*').order('sent_at', { ascending: false }).limit(100);
-  if (error) throw new Error(error.message);
-  return data.map((l) => ({
+export interface LogQueryOptions {
+  from?: string;
+  to?: string;
+  officeId?: string;
+  status?: 'success' | 'failed';
+  limit?: number;
+  offset?: number;
+}
+
+function mapLog(l: any): SendLog {
+  return {
     id: l.id,
     officeId: l.office_id,
     officeName: l.office_name,
@@ -221,7 +197,30 @@ export async function getLogs(): Promise<SendLog[]> {
     status: l.status,
     filesCount: l.files_count,
     error: l.error ?? undefined,
-  }));
+  };
+}
+
+export async function getLogsPage(options: LogQueryOptions = {}): Promise<{ logs: SendLog[]; total: number }> {
+  let query = supabase
+    .from('logs')
+    .select('*', { count: 'exact' })
+    .order('sent_at', { ascending: false });
+
+  if (options.from) query = query.gte('sent_at', options.from);
+  if (options.to) query = query.lte('sent_at', options.to);
+  if (options.officeId) query = query.eq('office_id', options.officeId);
+  if (options.status) query = query.eq('status', options.status);
+
+  const limit = Math.max(1, Math.min(options.limit ?? 500, 1000));
+  const offset = Math.max(0, options.offset ?? 0);
+  const { data, error, count } = await query.range(offset, offset + limit - 1);
+  if (error) throw new Error(error.message);
+  return { logs: data.map(mapLog), total: count ?? 0 };
+}
+
+export async function getLogs(options: LogQueryOptions = {}): Promise<SendLog[]> {
+  const page = await getLogsPage(options);
+  return page.logs;
 }
 
 export async function addLog(log: SendLog): Promise<void> {
@@ -289,14 +288,6 @@ function encodeOfficeName(name: string): string {
 }
 
 // --- Labels ---
-
-export interface CutoffLabel {
-  id: string;
-  startDate: string; // ISO date e.g. "2026-05-01"
-  endDate: string;   // ISO date e.g. "2026-05-15"
-  url: string;
-  createdAt: string;
-}
 
 export async function getLabels(): Promise<CutoffLabel[]> {
   const { data, error } = await supabase

@@ -12,6 +12,7 @@ import { sendBiometricsEmail } from './mailer';
 
 let currentTask: cron.ScheduledTask | null = null;
 let schedulerStarted = false;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function sendToAllOffices(): Promise<{ sent: number; failed: number }> {
   const [allOffices, settings, templates] = await Promise.all([
@@ -31,8 +32,10 @@ export async function sendToAllOffices(): Promise<{ sent: number; failed: number
 
   let sent = 0;
   let failed = 0;
+  const intervalMs = Math.max(0, settings.scheduler.sendIntervalSeconds ?? 30) * 1000;
 
-  for (const office of offices) {
+  for (let i = 0; i < offices.length; i++) {
+    const office = offices[i];
     const pdfPaths = await getOfficePDFs(office.name);
     const emailList = office.emails.join(', ');
 
@@ -48,34 +51,35 @@ export async function sendToAllOffices(): Promise<{ sent: number; failed: number
         error: 'No PDF files found',
       });
       failed++;
-      continue;
+    } else {
+      try {
+        await sendBiometricsEmail({ to: office.emails, officeName: office.name, pdfPaths, template });
+        await addLog({
+          id: generateId(),
+          officeId: office.id,
+          officeName: office.name,
+          email: emailList,
+          sentAt: new Date().toISOString(),
+          status: 'success',
+          filesCount: pdfPaths.length,
+        });
+        sent++;
+      } catch (err) {
+        await addLog({
+          id: generateId(),
+          officeId: office.id,
+          officeName: office.name,
+          email: emailList,
+          sentAt: new Date().toISOString(),
+          status: 'failed',
+          filesCount: pdfPaths.length,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        });
+        failed++;
+      }
     }
 
-    try {
-      await sendBiometricsEmail({ to: office.emails, officeName: office.name, pdfPaths, template });
-      await addLog({
-        id: generateId(),
-        officeId: office.id,
-        officeName: office.name,
-        email: emailList,
-        sentAt: new Date().toISOString(),
-        status: 'success',
-        filesCount: pdfPaths.length,
-      });
-      sent++;
-    } catch (err) {
-      await addLog({
-        id: generateId(),
-        officeId: office.id,
-        officeName: office.name,
-        email: emailList,
-        sentAt: new Date().toISOString(),
-        status: 'failed',
-        filesCount: pdfPaths.length,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      });
-      failed++;
-    }
+    if (intervalMs > 0 && i < offices.length - 1) await sleep(intervalMs);
   }
 
   return { sent, failed };

@@ -1,7 +1,28 @@
 import nodemailer from 'nodemailer';
 import path from 'path';
 import { getPDFBuffer } from './store';
-import type { EmailTemplate } from './store';
+import type { EmailTemplate } from './types';
+
+const EMAIL_ASSETS = [
+  'municipal-seal', 'attendance-illustration', 'attachment-icon',
+  'action-icon', 'reminder-icon', 'slogan',
+] as const;
+
+function assetImage(name: typeof EMAIL_ASSETS[number], width: number, alt: string): string {
+  const baseUrl = getEmailAssetsBaseUrl();
+  const src = baseUrl ? `${baseUrl}/${name}.png` : `cid:${name}@hrmo`;
+  return `<img src="${escapeHtml(src)}" width="${width}" alt="${escapeHtml(alt)}" style="display:block;width:${width}px;max-width:100%;height:auto;border:0;"/>`;
+}
+
+function getEmailAssetsBaseUrl(): string | undefined {
+  const value = process.env.EMAIL_ASSETS_BASE_URL?.trim();
+  if (!value) return undefined;
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error('EMAIL_ASSETS_BASE_URL must be an HTTPS folder URL without credentials, query parameters or a fragment.');
+  }
+  return url.href.replace(/\/$/, '');
+}
 
 function createTransporter() {
   return nodemailer.createTransport({
@@ -17,10 +38,285 @@ function resolvePlaceholders(text: string, vars: Record<string, string>): string
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function markdownToEmailHtml(text: string): string {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #dbeafe;margin:14px 0"/>')
+    .split('\n')
+    .map((line) =>
+      line.trim() === ''
+        ? ''
+        : `<p style="margin:0 0 12px;color:#0b2554;line-height:1.5;font-size:14px;font-weight:400;">${line}</p>`
+    )
+    .join('\n');
+}
+
+const DEFAULT_INTRO = `Good day!
+
+The biometric raw attendance data for your office covering **{{period}}** is attached to this email.`;
+
+function normalizeTemplateIntro(text: string): string {
+  const lower = text.toLowerCase();
+  const looksLikeOldFullTemplate =
+    lower.includes('submission reminder') ||
+    lower.includes('confidentiality notice') ||
+    lower.includes('official fb') ||
+    lower.includes('daily time record') ||
+    lower.length > 800;
+
+  return looksLikeOldFullTemplate ? DEFAULT_INTRO : text;
+}
+
+function getCurrentPayPeriod() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const start = new Date(year, month, day <= 15 ? 1 : 16);
+  const end = day <= 15 ? new Date(year, month, 15) : new Date(year, month + 1, 0);
+  const monthName = start.toLocaleString('default', { month: 'long' });
+  const sameMonth = start.getMonth() === end.getMonth();
+  const endMonthName = end.toLocaleString('default', { month: 'long' });
+  const period = sameMonth
+    ? `${monthName} ${start.getDate()}-${end.getDate()}, ${year}`
+    : `${monthName} ${start.getDate()} - ${endMonthName} ${end.getDate()}, ${year}`;
+
+  return {
+    period,
+    periodStart: `${monthName} ${start.getDate()}, ${year}`,
+    periodEnd: `${endMonthName} ${end.getDate()}, ${year}`,
+    payPeriod: start.getDate() === 1 ? '1 - 15' : '16 - 31',
+    monthYear: `${monthName} ${year}`,
+  };
+}
+
+function buildLogoHtml(): string {
+  return assetImage('municipal-seal', 72, 'Municipality of Pinamalayan seal');
+}
+
+function buildAttachmentRows(pdfPaths: string[]): string {
+  return pdfPaths.map((storagePath) => {
+    const fileName = escapeHtml(path.basename(storagePath));
+    return `
+      <tr>
+        <td style="padding:14px 0;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td width="52" valign="middle">
+                ${assetImage('attachment-icon', 44, 'Attachment')}
+              </td>
+              <td valign="middle">
+                <div style="font-size:11px;letter-spacing:0;text-transform:uppercase;color:#2563eb;font-weight:700;margin-bottom:6px;">Attachment</div>
+                <div style="font-size:15px;line-height:1.4;color:#0b2554;font-weight:700;word-break:break-word;">${fileName}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function buildEmailHtml({
+  subject,
+  bodyHtml,
+  officeName,
+  senderName,
+  pdfPaths,
+  period,
+}: {
+  subject: string;
+  bodyHtml: string;
+  officeName: string;
+  senderName: string;
+  pdfPaths: string[];
+  period: string;
+}) {
+  const safeSubject = escapeHtml(subject);
+  const safeOfficeName = escapeHtml(officeName);
+  const safeSenderName = escapeHtml(senderName);
+
+  return `
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>${safeSubject}</title>
+    <style>
+      @media screen and (max-width:600px) {
+        .email-padding { padding-left:20px !important; padding-right:20px !important; }
+        .email-stack { display:block !important; width:100% !important; box-sizing:border-box !important; padding-left:0 !important; padding-top:18px !important; }
+        .email-heading { font-size:18px !important; }
+        .email-divider { display:none !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f8ff;font-family:Arial,'Segoe UI',sans-serif;color:#0b2554;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f8ff;padding:24px 0;font-family:Arial,Helvetica,sans-serif;font-weight:400;letter-spacing:0;text-align:left;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="800" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:800px;table-layout:fixed;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td class="email-padding" style="background:#e8f3ff;padding:24px 32px;border-bottom:1px solid #dbeafe;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td width="76" valign="middle">${buildLogoHtml()}</td>
+                    <td valign="middle" style="padding-left:16px;">
+                      <div style="font-size:13px;line-height:1.4;color:#0b3b82;font-weight:700;text-transform:uppercase;">Human Resource Management Office</div>
+                      <div style="font-size:10px;line-height:1.5;color:#2563eb;font-weight:400;text-transform:uppercase;margin-top:5px;">Municipal Government of Pinamalayan</div>
+                    </td>
+                    <td class="email-divider" width="1" style="background:#9bbce8;"></td>
+                    <td class="email-stack" width="150" valign="middle" style="padding-left:14px;">
+                      <div style="font-size:11px;line-height:1.4;color:#0b3b82;font-weight:700;white-space:nowrap;">Biometric Attendance Data</div>
+                      <div style="font-size:12px;line-height:1.4;color:#0b2554;margin-top:6px;">${escapeHtml(period)}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="padding:28px 36px 12px;">
+                <div class="email-heading" style="font-size:26px;line-height:1.2;color:#0b2554;font-weight:700;letter-spacing:0;white-space:nowrap;">Biometric Attendance Data</div>
+                <div style="font-size:20px;line-height:1.35;color:#3b82f6;font-weight:700;margin-top:8px;margin-bottom:20px;">${escapeHtml(period)}</div>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;">
+                  <tr>
+                    <td class="email-stack" width="58%" valign="top">
+                      <div>
+                        <p style="margin:0 0 12px;color:#0b2554;font-size:15px;line-height:1.4;font-weight:700;">Dear ${safeOfficeName},</p>
+                        ${bodyHtml}
+                      </div>
+                    </td>
+                    <td class="email-stack" width="42%" valign="top" align="center" style="padding-left:12px;padding-top:4px;">
+                      ${assetImage('attendance-illustration', 300, 'Attendance records with envelope, clock and calendar')}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="padding:16px 36px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eef6ff;border-radius:14px;padding:6px 24px;">
+                  ${buildAttachmentRows(pdfPaths)}
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="padding:24px 36px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eef6ff;border-radius:14px;">
+                  <tr>
+                    <td width="88" align="center" valign="top" style="padding:20px 0 20px 16px;">
+                      ${assetImage('action-icon', 72, 'Action required')}
+                    </td>
+                    <td style="padding:22px 24px 20px 12px;">
+                      <div style="font-size:12px;letter-spacing:0;text-transform:uppercase;color:#2563eb;font-weight:700;margin-bottom:10px;">Action Required</div>
+                      <div style="font-size:14px;line-height:1.55;color:#0b2554;">
+                        Please download the attached attendance data and use it for the encoding and preparation of the <strong>Daily Time Record (DTR)</strong> of your personnel.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="padding:24px 36px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td width="88" align="center" valign="top" style="padding:4px 12px 0 16px;">
+                      ${assetImage('reminder-icon', 72, 'Submission reminder')}
+                    </td>
+                    <td>
+                      <div style="font-size:12px;letter-spacing:0;text-transform:uppercase;color:#2563eb;font-weight:700;margin-bottom:10px;">Submission Reminder</div>
+                      <div style="font-size:14px;line-height:1.55;color:#0b2554;margin-bottom:18px;">
+                        Please be reminded that DTRs and their required attachments must be submitted within <strong>three (3) working days</strong> after the end of each pay period.
+                      </div>
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dbeafe;border-radius:10px;overflow:hidden;">
+                        <tr>
+                          <td width="33%" style="background:#e8f3ff;padding:10px;font-size:12px;color:#0b3b82;font-weight:700;text-align:center;border-right:1px solid #dbeafe;">Pay Period</td>
+                          <td style="background:#e8f3ff;padding:10px;font-size:12px;color:#0b3b82;font-weight:700;text-align:center;">Submission Deadline</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;font-weight:700;text-align:center;border-top:1px solid #dbeafe;border-right:1px solid #dbeafe;">1 - 15</td>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;border-top:1px solid #dbeafe;text-align:center;">18th day of the month</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;font-weight:700;text-align:center;border-top:1px solid #dbeafe;border-right:1px solid #dbeafe;">16 - 31</td>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;border-top:1px solid #dbeafe;text-align:center;">3rd day of the following month</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="padding:28px 36px;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td width="58" valign="top">
+                      <div style="width:38px;height:38px;border-radius:50%;background:#e0e7ff;color:#4057d6;font-size:24px;line-height:38px;text-align:center;font-weight:900;">&#10003;</div>
+                    </td>
+                    <td>
+                      <div style="font-size:14px;line-height:1.5;color:#0b2554;font-weight:400;">Kindly acknowledge receipt of this email upon receiving the attachment.</div>
+                      <div style="font-size:12px;color:#0b3b82;font-style:italic;margin-top:6px;">Thank you very much.</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="email-padding" style="background:#e8f3ff;padding:24px 36px;border-top:1px solid #dbeafe;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td class="email-stack" valign="top" style="padding-right:16px;">
+                      <div style="font-size:13px;line-height:1.4;color:#0b3b82;font-weight:700;text-transform:uppercase;">Human Resource Management Office</div>
+                      <div style="font-size:12px;line-height:1.4;color:#0b2554;margin-top:4px;">Municipal Government of Pinamalayan</div>
+                      <div style="font-size:11px;line-height:1.6;color:#0b3b82;margin-top:16px;">
+                        MGP Complex, Madrid Blvd., Zone III<br/>
+                        Pinamalayan, Oriental Mindoro 5208<br/>
+                        (043) 738-9454<br/>
+                        hrmo.mgop@gmail.com
+                      </div>
+                    </td>
+                    <td class="email-divider" width="1" style="background:#9bbce8;"></td>
+                    <td class="email-stack" width="180" valign="top" align="center" style="padding-left:20px;">
+                      ${assetImage('slogan', 170, 'Better Services for a Stronger Pinamalayan')}
+                      <div style="font-size:11px;line-height:1.5;color:#0b3b82;margin-top:14px;">Official Facebook Page:<br/><strong>HRMOPinamalayan</strong></div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+          <div style="width:720px;max-width:100%;font-size:11px;line-height:1.5;color:#64748b;margin-top:12px;text-align:left;">
+            This email and its attachments are intended for ${safeOfficeName}. If you received this message in error, please notify ${safeSenderName}.
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 export interface SendEmailOptions {
   to: string | string[];
   officeName: string;
-  pdfPaths: string[]; // now Supabase storage paths e.g. "office_name/file.pdf"
+  pdfPaths: string[];
   template: EmailTemplate;
 }
 
@@ -30,63 +326,31 @@ export async function sendBiometricsEmail({
   pdfPaths,
   template,
 }: SendEmailOptions): Promise<void> {
-  const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+  const payPeriod = getCurrentPayPeriod();
   const senderName = process.env.GMAIL_FROM_NAME || 'Biometrics Department';
-  const vars = { officeName, month, senderName };
+  const vars = {
+    officeName,
+    senderName,
+    month: payPeriod.monthYear,
+    monthYear: payPeriod.monthYear,
+    period: payPeriod.period,
+    payPeriod: payPeriod.payPeriod,
+    periodStart: payPeriod.periodStart,
+    periodEnd: payPeriod.periodEnd,
+  };
 
   const subject = resolvePlaceholders(template.subject, vars);
-  const bodyText = resolvePlaceholders(template.body, vars);
+  const bodyText = resolvePlaceholders(normalizeTemplateIntro(template.body), vars);
+  const bodyHtml = markdownToEmailHtml(bodyText);
+  const html = buildEmailHtml({
+    subject,
+    bodyHtml,
+    officeName,
+    senderName,
+    pdfPaths,
+    period: payPeriod.period,
+  });
 
-  const bodyHtml = bodyText
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:12px 0"/>')
-    .split('\n')
-    .map((line) =>
-      line.trim() === ''
-        ? '<br/>'
-        : `<p style="margin:0 0 8px;color:#1e293b;line-height:1.7;font-size:14px;">${line}</p>`
-    )
-    .join('\n');
-
-  const html = `
-    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,0.08);">
-      
-      <!-- Header -->
-      <div style="background:linear-gradient(135deg,#1e293b 0%,#334155 100%);padding:28px 36px;border-bottom:2px solid #1d4ed8;">
-        <div style="display:flex;align-items:center;gap:14px;">
-          
-          <div>
-            <div style="font-size:11px;font-weight:700;color:#93c5fd;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:3px;">
-              Human Resource Management Office
-            </div>
-            <h1 style="margin:0;font-size:20px;font-weight:800;color:#f1f5f9;letter-spacing:-0.3px;">
-              ${subject}
-            </h1>
-          </div>
-        </div>
-      </div>
-
-      <!-- Divider accent -->
-      <div style="height:4px;background:linear-gradient(90deg,#1d4ed8,#3b82f6,#93c5fd);"></div>
-
-      <!-- Body -->
-      <div style="padding:32px 36px;background:#ffffff;color:#1e293b;font-size:14px;line-height:1.6;">
-        ${bodyHtml}
-      </div>
-
-      <!-- Footer -->
-      <div style="background:#f1f5f9;padding:18px 36px;border-top:1px solid #cbd5f5;display:flex;align-items:center;justify-content:space-between;">
-       
-        <p style="margin:0;font-size:11px;color:#334155;font-weight:600;">
-          HRMO
-        </p>
-      </div>
-
-    </div>
-  `;
-
-  // Download all PDFs from Supabase storage as buffers
   const attachments = await Promise.all(
     pdfPaths.map(async (storagePath) => ({
       filename: path.basename(storagePath),
@@ -101,7 +365,16 @@ export async function sendBiometricsEmail({
     to: Array.isArray(to) ? to.join(', ') : to,
     subject,
     html,
-    attachments,
+    attachments: [
+      ...attachments,
+      ...(getEmailAssetsBaseUrl() ? [] : EMAIL_ASSETS.map((name) => ({
+        filename: `${name}.png`,
+        path: path.join(process.cwd(), 'email-assets', `${name}.png`),
+        cid: `${name}@hrmo`,
+        contentType: 'image/png',
+        contentDisposition: 'inline' as const,
+      }))),
+    ],
   });
 }
 
@@ -114,5 +387,3 @@ export async function verifyConnection(): Promise<boolean> {
     return false;
   }
 }
-
-  
