@@ -28,8 +28,28 @@ export interface EmailTemplate {
   name: string;
   subject: string;
   body: string;
+  sections?: EmailSections;
   isDefault: boolean;
   createdAt: string;
+}
+
+export interface EmailSections {
+  action: string;
+  reminder: string;
+  deadlines: { period: string; deadline: string }[];
+  acknowledgement: string;
+  closing: string;
+}
+
+export interface EmailFooter {
+  office: string;
+  organization: string;
+  address: string;
+  phone: string;
+  email: string;
+  facebook: string;
+  facebookAccount: string;
+  confidentialityNotice: string;
 }
 
 export interface SchedulerConfig {
@@ -41,6 +61,7 @@ export interface SchedulerConfig {
 }
 
 export interface Settings {
+  emailFooter?: EmailFooter;
   autoSendEnabled: boolean;
   activeTemplateId: string;
   scheduler: SchedulerConfig;

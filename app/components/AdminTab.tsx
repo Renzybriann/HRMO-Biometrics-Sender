@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Eye, EyeOff, RefreshCw, Save, Shield } from 'lucide-react';
+import { EmailFooterSettings } from './EmailFooterSettings';
 
 export function AdminTab({ showToast }: { showToast: (msg: string, type?: 'success' | 'error' | 'info') => void }) {
   const [gmailUser, setGmailUser] = useState('');
@@ -81,6 +82,7 @@ export function AdminTab({ showToast }: { showToast: (msg: string, type?: 'succe
           <button className="btn btn-ghost" onClick={test} disabled={testing}>{testing ? <RefreshCw size={13} className="spin" /> : <CheckCircle size={13} />} Test Connection</button>
         </div>
       </div>
+      <EmailFooterSettings showToast={showToast} />
     </div>
   );
 }

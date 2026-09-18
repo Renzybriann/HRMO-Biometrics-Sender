@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { DEFAULT_INTRO, DEFAULT_SECTIONS } from './email-content';
 import type { CutoffLabel, EmailTemplate, Office, SchedulerConfig, SendLog, Settings } from './types';
 export type { CutoffLabel, EmailTemplate, Office, SchedulerConfig, SendLog, Settings } from './types';
 
@@ -6,13 +7,8 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
   id: 'default',
   name: 'HRMO Biometric Attendance',
   subject: 'Biometric Attendance Data – {{period}} | {{officeName}}',
-  body: `Good day!
-
-The biometric raw attendance data for your office covering **{{period}}** is attached to this email.
-
-Please download the attached attendance data and use it for the encoding and preparation of the **Daily Time Record (DTR)** of your personnel.
-
-Kindly acknowledge receipt of this email upon receiving the attachment.`,
+  body: DEFAULT_INTRO,
+  sections: DEFAULT_SECTIONS,
   isDefault: true,
   createdAt: new Date().toISOString(),
 };
@@ -97,6 +93,7 @@ export async function getTemplates(): Promise<EmailTemplate[]> {
     name: t.name,
     subject: t.subject,
     body: t.body,
+    sections: t.sections ?? undefined,
     isDefault: t.is_default,
     createdAt: t.created_at,
   }));
@@ -108,6 +105,7 @@ export async function addTemplate(template: EmailTemplate): Promise<void> {
     name: template.name,
     subject: template.subject,
     body: template.body,
+    ...(template.sections !== undefined ? { sections: template.sections } : {}),
     is_default: template.isDefault,
     created_at: template.createdAt,
   });
@@ -119,11 +117,12 @@ export async function updateTemplate(template: Partial<EmailTemplate> & { id: st
   if (template.name !== undefined) update.name = template.name;
   if (template.subject !== undefined) update.subject = template.subject;
   if (template.body !== undefined) update.body = template.body;
+  if (template.sections !== undefined) update.sections = template.sections;
 
   const { data, error } = await supabase
     .from('templates').update(update).eq('id', template.id).select().single();
   if (error) throw new Error(error.message);
-  return { id: data.id, name: data.name, subject: data.subject, body: data.body, isDefault: data.is_default, createdAt: data.created_at };
+  return { id: data.id, name: data.name, subject: data.subject, body: data.body, sections: data.sections ?? undefined, isDefault: data.is_default, createdAt: data.created_at };
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
@@ -148,6 +147,7 @@ export async function getSettings(): Promise<Settings> {
     activeTemplateId: data.active_template_id ?? 'default',
     scheduler: { ...DEFAULT_SCHEDULER, ...(data.scheduler ?? {}) },
     scheduledOfficeIds: data.scheduled_office_ids ?? [],
+    emailFooter: data.email_footer ?? undefined,
   };
 }
 
@@ -157,6 +157,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   if (patch.activeTemplateId !== undefined) update.active_template_id = patch.activeTemplateId;
   if (patch.scheduler !== undefined) update.scheduler = patch.scheduler;
   if (patch.scheduledOfficeIds !== undefined) update.scheduled_office_ids = patch.scheduledOfficeIds;
+  if (patch.emailFooter !== undefined) update.email_footer = patch.emailFooter;
 
   const { data, error } = await supabase
     .from('settings')
@@ -172,6 +173,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
     active_template_id: patch.activeTemplateId ?? 'default',
     scheduler: patch.scheduler ?? DEFAULT_SCHEDULER,
     scheduled_office_ids: patch.scheduledOfficeIds ?? [],
+    ...(patch.emailFooter !== undefined ? { email_footer: patch.emailFooter } : {}),
   });
   if (insertError) throw new Error(insertError.message);
 }

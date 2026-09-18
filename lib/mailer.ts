@@ -1,7 +1,8 @@
 import nodemailer from 'nodemailer';
 import path from 'path';
-import { getPDFBuffer } from './store';
-import type { EmailTemplate } from './types';
+import { getPDFBuffer, getSettings } from './store';
+import type { EmailTemplate, EmailSections, EmailFooter } from './types';
+import { DEFAULT_SECTIONS, DEFAULT_FOOTER } from './email-content';
 
 const EMAIL_ASSETS = [
   'municipal-seal', 'attendance-illustration', 'attachment-icon',
@@ -61,22 +62,6 @@ function markdownToEmailHtml(text: string): string {
     .join('\n');
 }
 
-const DEFAULT_INTRO = `Good day!
-
-The biometric raw attendance data for your office covering **{{period}}** is attached to this email.`;
-
-function normalizeTemplateIntro(text: string): string {
-  const lower = text.toLowerCase();
-  const looksLikeOldFullTemplate =
-    lower.includes('submission reminder') ||
-    lower.includes('confidentiality notice') ||
-    lower.includes('official fb') ||
-    lower.includes('daily time record') ||
-    lower.length > 800;
-
-  return looksLikeOldFullTemplate ? DEFAULT_INTRO : text;
-}
-
 function getCurrentPayPeriod() {
   const now = new Date();
   const year = now.getFullYear();
@@ -134,6 +119,8 @@ function buildEmailHtml({
   senderName,
   pdfPaths,
   period,
+  sections,
+  footer,
 }: {
   subject: string;
   bodyHtml: string;
@@ -141,10 +128,11 @@ function buildEmailHtml({
   senderName: string;
   pdfPaths: string[];
   period: string;
+  sections: EmailSections;
+  footer: EmailFooter;
 }) {
   const safeSubject = escapeHtml(subject);
   const safeOfficeName = escapeHtml(officeName);
-  const safeSenderName = escapeHtml(senderName);
 
   return `
 <!doctype html>
@@ -223,7 +211,7 @@ function buildEmailHtml({
                     <td style="padding:22px 24px 20px 12px;">
                       <div style="font-size:12px;letter-spacing:0;text-transform:uppercase;color:#2563eb;font-weight:700;margin-bottom:10px;">Action Required</div>
                       <div style="font-size:14px;line-height:1.55;color:#0b2554;">
-                        Please download the attached attendance data and use it for the encoding and preparation of the <strong>Daily Time Record (DTR)</strong> of your personnel.
+                        ${markdownToEmailHtml(sections.action)}
                       </div>
                     </td>
                   </tr>
@@ -241,21 +229,17 @@ function buildEmailHtml({
                     <td>
                       <div style="font-size:12px;letter-spacing:0;text-transform:uppercase;color:#2563eb;font-weight:700;margin-bottom:10px;">Submission Reminder</div>
                       <div style="font-size:14px;line-height:1.55;color:#0b2554;margin-bottom:18px;">
-                        Please be reminded that DTRs and their required attachments must be submitted within <strong>three (3) working days</strong> after the end of each pay period.
+                        ${markdownToEmailHtml(sections.reminder)}
                       </div>
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dbeafe;border-radius:10px;overflow:hidden;">
                         <tr>
                           <td width="33%" style="background:#e8f3ff;padding:10px;font-size:12px;color:#0b3b82;font-weight:700;text-align:center;border-right:1px solid #dbeafe;">Pay Period</td>
                           <td style="background:#e8f3ff;padding:10px;font-size:12px;color:#0b3b82;font-weight:700;text-align:center;">Submission Deadline</td>
                         </tr>
-                        <tr>
-                          <td style="padding:12px;font-size:14px;color:#0b2554;font-weight:700;text-align:center;border-top:1px solid #dbeafe;border-right:1px solid #dbeafe;">1 - 15</td>
-                          <td style="padding:12px;font-size:14px;color:#0b2554;border-top:1px solid #dbeafe;text-align:center;">18th day of the month</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px;font-size:14px;color:#0b2554;font-weight:700;text-align:center;border-top:1px solid #dbeafe;border-right:1px solid #dbeafe;">16 - 31</td>
-                          <td style="padding:12px;font-size:14px;color:#0b2554;border-top:1px solid #dbeafe;text-align:center;">3rd day of the following month</td>
-                        </tr>
+                        ${sections.deadlines.map((row) => `<tr>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;font-weight:700;text-align:center;border-top:1px solid #dbeafe;border-right:1px solid #dbeafe;">${escapeHtml(row.period)}</td>
+                          <td style="padding:12px;font-size:14px;color:#0b2554;border-top:1px solid #dbeafe;text-align:center;">${escapeHtml(row.deadline)}</td>
+                        </tr>`).join('')}
                       </table>
                     </td>
                   </tr>
@@ -271,8 +255,8 @@ function buildEmailHtml({
                       <div style="width:38px;height:38px;border-radius:50%;background:#e0e7ff;color:#4057d6;font-size:24px;line-height:38px;text-align:center;font-weight:900;">&#10003;</div>
                     </td>
                     <td>
-                      <div style="font-size:14px;line-height:1.5;color:#0b2554;font-weight:400;">Kindly acknowledge receipt of this email upon receiving the attachment.</div>
-                      <div style="font-size:12px;color:#0b3b82;font-style:italic;margin-top:6px;">Thank you very much.</div>
+                      <div style="font-size:14px;line-height:1.5;color:#0b2554;font-weight:400;">${markdownToEmailHtml(sections.acknowledgement)}</div>
+                      <div style="font-size:12px;color:#0b3b82;font-style:italic;margin-top:6px;">${markdownToEmailHtml(sections.closing)}</div>
                     </td>
                   </tr>
                 </table>
@@ -284,28 +268,31 @@ function buildEmailHtml({
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   <tr>
                     <td class="email-stack" valign="top" style="padding-right:16px;">
-                      <div style="font-size:13px;line-height:1.4;color:#0b3b82;font-weight:700;text-transform:uppercase;">Human Resource Management Office</div>
-                      <div style="font-size:12px;line-height:1.4;color:#0b2554;margin-top:4px;">Municipal Government of Pinamalayan</div>
+                      <div style="font-size:13px;line-height:1.4;color:#0b3b82;font-weight:700;text-transform:uppercase;">${escapeHtml(footer.office)}</div>
+                      <div style="font-size:12px;line-height:1.4;color:#0b2554;margin-top:4px;">${escapeHtml(footer.organization)}</div>
                       <div style="font-size:11px;line-height:1.6;color:#0b3b82;margin-top:16px;">
-                        MGP Complex, Madrid Blvd., Zone III<br/>
-                        Pinamalayan, Oriental Mindoro 5208<br/>
-                        (043) 738-9454<br/>
-                        hrmo.mgop@gmail.com
+                        ${escapeHtml(footer.address).replace(/\n/g, '<br/>')}<br/>
+                        ${escapeHtml(footer.phone)}<br/>
+                        ${escapeHtml(footer.email)}
                       </div>
                     </td>
                     <td class="email-divider" width="1" style="background:#9bbce8;"></td>
                     <td class="email-stack" width="180" valign="top" align="center" style="padding-left:20px;">
                       ${assetImage('slogan', 170, 'Better Services for a Stronger Pinamalayan')}
-                      <div style="font-size:11px;line-height:1.5;color:#0b3b82;margin-top:14px;">Official Facebook Page:<br/><strong>HRMOPinamalayan</strong></div>
+                      <div style="font-size:11px;line-height:1.5;color:#0b3b82;margin-top:14px;">Official Facebook Page:<br/><strong>${escapeHtml(footer.facebook)}</strong></div>
+                      ${footer.facebookAccount.trim() ? `<div style="font-size:11px;line-height:1.5;color:#0b3b82;margin-top:10px;overflow-wrap:break-word;">Official Facebook Account:<br/><strong>${escapeHtml(footer.facebookAccount)}</strong></div>` : ''}
                     </td>
                   </tr>
                 </table>
               </td>
             </tr>
           </table>
-          <div style="width:720px;max-width:100%;font-size:11px;line-height:1.5;color:#64748b;margin-top:12px;text-align:left;">
-            This email and its attachments are intended for ${safeOfficeName}. If you received this message in error, please notify ${safeSenderName}.
-          </div>
+          ${footer.confidentialityNotice.trim() ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:800px;table-layout:fixed;">
+            <tr><td class="email-padding" style="padding:18px 36px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#64748b;text-align:left;overflow-wrap:break-word;">
+              <div style="font-weight:700;margin-bottom:6px;">CONFIDENTIALITY NOTICE</div>
+              <div style="font-style:italic;">${escapeHtml(footer.confidentialityNotice).replace(/\r?\n/g, '<br/>')}</div>
+            </td></tr>
+          </table>` : ''}
         </td>
       </tr>
     </table>
@@ -320,12 +307,12 @@ export interface SendEmailOptions {
   template: EmailTemplate;
 }
 
-export async function sendBiometricsEmail({
-  to,
+export function renderBiometricsEmail({
   officeName,
   pdfPaths,
   template,
-}: SendEmailOptions): Promise<void> {
+  footer = DEFAULT_FOOTER,
+}: Omit<SendEmailOptions, 'to'> & { footer?: EmailFooter }) {
   const payPeriod = getCurrentPayPeriod();
   const senderName = process.env.GMAIL_FROM_NAME || 'Biometrics Department';
   const vars = {
@@ -340,8 +327,16 @@ export async function sendBiometricsEmail({
   };
 
   const subject = resolvePlaceholders(template.subject, vars);
-  const bodyText = resolvePlaceholders(normalizeTemplateIntro(template.body), vars);
+  const bodyText = resolvePlaceholders(template.body, vars);
   const bodyHtml = markdownToEmailHtml(bodyText);
+  const input = template.sections ?? DEFAULT_SECTIONS;
+  const sections: EmailSections = {
+    action: resolvePlaceholders(input.action, vars),
+    reminder: resolvePlaceholders(input.reminder, vars),
+    acknowledgement: resolvePlaceholders(input.acknowledgement, vars),
+    closing: resolvePlaceholders(input.closing, vars),
+    deadlines: input.deadlines.map((row) => ({ period: resolvePlaceholders(row.period, vars), deadline: resolvePlaceholders(row.deadline, vars) })),
+  };
   const html = buildEmailHtml({
     subject,
     bodyHtml,
@@ -349,7 +344,16 @@ export async function sendBiometricsEmail({
     senderName,
     pdfPaths,
     period: payPeriod.period,
+    sections,
+    footer: { ...DEFAULT_FOOTER, ...footer },
   });
+  return { subject, html };
+}
+
+export async function sendBiometricsEmail({ to, officeName, pdfPaths, template }: SendEmailOptions): Promise<void> {
+  const settings = await getSettings();
+  const { subject, html } = renderBiometricsEmail({ officeName, pdfPaths, template, footer: settings.emailFooter });
+  const senderName = process.env.GMAIL_FROM_NAME || 'Biometrics Department';
 
   const attachments = await Promise.all(
     pdfPaths.map(async (storagePath) => ({
