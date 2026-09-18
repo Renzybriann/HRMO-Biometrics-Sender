@@ -11,6 +11,7 @@ import {
   EmailTemplate,
 } from '@/lib/store';
 import { requireAuth } from '@/lib/auth-guard';
+import { parseTemplateDraft } from '@/lib/email-content';
 
 export async function GET() {
   try {
@@ -81,19 +82,13 @@ export async function POST(req: NextRequest) {
     if (authError) return authError;
 
     const body = await req.json();
-    const { name, subject, body: bodyText } = body;
-    if (!name || !subject || !bodyText) {
-      return NextResponse.json(
-        { error: 'name, subject and body required' },
-        { status: 400 }
-      );
-    }
+    let draft;
+    try { draft = parseTemplateDraft(body); }
+    catch (err) { return NextResponse.json({ error: (err as Error).message }, { status: 400 }); }
 
     const newTemplate: EmailTemplate = {
       id: generateId(),
-      name: name.trim(),
-      subject: subject.trim(),
-      body: bodyText.trim(),
+      ...draft,
       isDefault: false,
       createdAt: new Date().toISOString(),
     };
@@ -115,12 +110,15 @@ export async function PUT(req: NextRequest) {
     if (authError) return authError;
 
     const body = await req.json();
-    const { id, name, subject, body: bodyText } = body;
-    if (!id) {
+    const { id } = body;
+    if (typeof id !== 'string' || !id) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
 
-    const updated = await updateTemplate({ id, name, subject, body: bodyText });
+    let draft;
+    try { draft = parseTemplateDraft(body); }
+    catch (err) { return NextResponse.json({ error: (err as Error).message }, { status: 400 }); }
+    const updated = await updateTemplate({ id, ...draft });
     return NextResponse.json(updated);
   } catch (err) {
     return NextResponse.json(

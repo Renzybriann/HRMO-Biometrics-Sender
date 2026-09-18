@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { officeId } = body;
+    const { officeId, templateId } = body;
 
     const [allOffices, settings, templates] = await Promise.all([
       getOffices(),
@@ -31,7 +31,10 @@ export async function POST(req: NextRequest) {
       getTemplates(),
     ]);
 
-    const template = await getActiveTemplate(settings, templates);
+    const activeTemplate = await getActiveTemplate(settings, templates);
+    const template = typeof templateId === 'string'
+      ? templates.find(t => t.id === templateId) ?? activeTemplate
+      : activeTemplate;
     const targets = officeId ? allOffices.filter(o => o.id === officeId) : allOffices;
 
     if (targets.length === 0) {
