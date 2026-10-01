@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import path from 'path';
 import { getPDFBuffer, getSettings } from './store';
 import type { EmailTemplate, EmailSections, EmailFooter } from './types';
-import { DEFAULT_SECTIONS, DEFAULT_FOOTER } from './email-content';
+import { DEFAULT_SECTIONS, DEFAULT_FOOTER, getCutoffPeriod } from './email-content';
 
 const EMAIL_ASSETS = [
   'municipal-seal', 'attendance-illustration', 'attachment-icon',
@@ -60,29 +60,6 @@ function markdownToEmailHtml(text: string): string {
         : `<p style="margin:0 0 12px;color:#0b2554;line-height:1.5;font-size:14px;font-weight:400;">${line}</p>`
     )
     .join('\n');
-}
-
-function getCurrentPayPeriod() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const day = now.getDate();
-  const start = new Date(year, month, day <= 15 ? 1 : 16);
-  const end = day <= 15 ? new Date(year, month, 15) : new Date(year, month + 1, 0);
-  const monthName = start.toLocaleString('default', { month: 'long' });
-  const sameMonth = start.getMonth() === end.getMonth();
-  const endMonthName = end.toLocaleString('default', { month: 'long' });
-  const period = sameMonth
-    ? `${monthName} ${start.getDate()}-${end.getDate()}, ${year}`
-    : `${monthName} ${start.getDate()} - ${endMonthName} ${end.getDate()}, ${year}`;
-
-  return {
-    period,
-    periodStart: `${monthName} ${start.getDate()}, ${year}`,
-    periodEnd: `${endMonthName} ${end.getDate()}, ${year}`,
-    payPeriod: start.getDate() === 1 ? '1 - 15' : '16 - 31',
-    monthYear: `${monthName} ${year}`,
-  };
 }
 
 function buildLogoHtml(): string {
@@ -313,7 +290,7 @@ export function renderBiometricsEmail({
   template,
   footer = DEFAULT_FOOTER,
 }: Omit<SendEmailOptions, 'to'> & { footer?: EmailFooter }) {
-  const payPeriod = getCurrentPayPeriod();
+  const payPeriod = getCutoffPeriod(template.sections?.cutoff);
   const senderName = process.env.GMAIL_FROM_NAME || 'Biometrics Department';
   const vars = {
     officeName,

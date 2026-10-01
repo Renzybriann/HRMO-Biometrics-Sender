@@ -38,12 +38,43 @@ export function parseSections(value: unknown): EmailSections {
   const input = record(value);
   if (!Array.isArray(input.deadlines) || input.deadlines.length > 12) throw new Error('Provide at most 12 deadline rows');
   return {
+    ...(input.cutoff === undefined ? {} : { cutoff: parseCutoff(input.cutoff) }),
     action: text(input.action, 'Action'), reminder: text(input.reminder, 'Reminder'),
     acknowledgement: text(input.acknowledgement, 'Acknowledgement'), closing: text(input.closing, 'Closing'),
     deadlines: input.deadlines.map((value) => {
       const row = record(value);
       return { period: text(row.period, 'Pay period', 200), deadline: text(row.deadline, 'Deadline', 500) };
     }),
+  };
+}
+
+export function parseCutoff(value: unknown): { startDate: string; endDate: string } {
+  if (!value) throw new Error('Select and save the cutoff start and end dates in Templates before previewing or sending.');
+  const input = record(value);
+  const date = (value: unknown, label: string) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`${label} is required (YYYY-MM-DD).`);
+    const parsed = new Date(`${value}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw new Error(`${label} is not a valid date.`);
+    return value;
+  };
+  const startDate = date(input.startDate, 'Cutoff start date');
+  const endDate = date(input.endDate, 'Cutoff end date');
+  if (endDate < startDate) throw new Error('Cutoff end date must be on or after the start date.');
+  return { startDate, endDate };
+}
+
+export function getCutoffPeriod(value: unknown) {
+  const { startDate, endDate } = parseCutoff(value);
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const full = (date: Date) => date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const monthName = start.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+  const sameMonth = startDate.slice(0, 7) === endDate.slice(0, 7);
+  const period = sameMonth ? `${monthName} ${start.getUTCDate()}-${end.getUTCDate()}, ${start.getUTCFullYear()}` : `${full(start)} - ${full(end)}`;
+  return {
+    period, periodStart: full(start), periodEnd: full(end),
+    payPeriod: sameMonth ? `${start.getUTCDate()} - ${end.getUTCDate()}` : period,
+    monthYear: `${monthName} ${start.getUTCFullYear()}`,
   };
 }
 
@@ -61,5 +92,6 @@ export function parseTemplateDraft(value: unknown) {
   const subject = text(input.subject, 'Subject', 500).trim();
   const body = text(input.body, 'Introduction', 20000);
   if (!name || !subject || !body.trim()) throw new Error('Name, subject and introduction are required');
+  parseCutoff(record(input.sections ?? {}).cutoff);
   return { name, subject, body, ...(input.sections === undefined ? {} : { sections: parseSections(input.sections) }) };
 }

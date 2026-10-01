@@ -210,6 +210,15 @@ export function TemplatesTab({ templates, activeTemplateId, setActiveTemplateId,
             </div> : <fieldset disabled={saving || previewLoading} style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div><label className="label">Template Name</label><input className="input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Monthly Biometrics" /></div>
 
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                <label className="label" style={{ flex: '1 1 180px', minWidth: 0 }}>Cutoff Start Date
+                  <input className="input" type="date" required value={sections.cutoff?.startDate ?? ''} max={sections.cutoff?.endDate || undefined} onChange={e => setSections({ ...sections, cutoff: { startDate: e.target.value, endDate: sections.cutoff?.endDate ?? '' } })} />
+                </label>
+                <label className="label" style={{ flex: '1 1 180px', minWidth: 0 }}>Cutoff End Date
+                  <input className="input" type="date" required value={sections.cutoff?.endDate ?? ''} min={sections.cutoff?.startDate || undefined} onChange={e => setSections({ ...sections, cutoff: { startDate: sections.cutoff?.startDate ?? '', endDate: e.target.value } })} />
+                </label>
+              </div>
+
               <div style={{ background: 'var(--blue-pale)', borderRadius: 6, padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Insert:</span>
                 {placeholders.map(p => (

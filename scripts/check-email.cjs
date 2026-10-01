@@ -8,7 +8,8 @@ const contentModule = new Module(path.resolve('lib/email-content.ts'));
 contentModule._compile(ts.transpileModule(fs.readFileSync('lib/email-content.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText, path.resolve('lib/email-content.ts'));
-const { DEFAULT_FOOTER, DEFAULT_SECTIONS, parseSections, parseTemplateDraft, parseFooter } = contentModule.exports;
+const { DEFAULT_FOOTER, DEFAULT_SECTIONS, parseSections, parseTemplateDraft, parseFooter, parseCutoff, getCutoffPeriod } = contentModule.exports;
+const selectedSections = { ...DEFAULT_SECTIONS, cutoff: { startDate: '2026-09-16', endDate: '2026-09-30' } };
 let savedFooter = DEFAULT_FOOTER;
 let authorized = true;
 
@@ -56,7 +57,7 @@ async function main() {
   await mailer.exports.sendBiometricsEmail({
     to: 'test@example.invalid', officeName: 'Office <Test>',
     pdfPaths: ['office/report.pdf'],
-    template: { subject: 'Attendance {{officeName}}', body: 'Good day!' },
+    template: { subject: 'Attendance {{officeName}}', body: 'Good day!', sections: selectedSections },
   });
   assert.equal(captured.attachments.length, 7);
   assert.equal(captured.attachments[0].content.toString(), 'test-pdf');
@@ -75,7 +76,7 @@ async function main() {
   await mailer.exports.sendBiometricsEmail({
     to: 'test@example.invalid', officeName: 'Office <Test>',
     pdfPaths: ['office/report.pdf'],
-    template: { subject: 'Attendance', body: 'Good day!' },
+    template: { subject: 'Attendance', body: 'Good day!', sections: selectedSections },
   });
   assert.equal(captured.attachments.length, 1);
   assert.equal(captured.attachments[0].contentType, 'application/pdf');
@@ -88,10 +89,10 @@ async function main() {
   assert(!hosted.message.toString().includes('Content-ID:'));
   assert(!hosted.message.toString().includes('Content-Type: image/'));
   const legacyBody = 'Daily Time Record: KEEP THIS MESSAGE ' + 'original text '.repeat(100);
-  const legacy = mailer.exports.renderBiometricsEmail({ officeName: 'Office', pdfPaths: [], template: { subject: 'Legacy', body: legacyBody } });
+  const legacy = mailer.exports.renderBiometricsEmail({ officeName: 'Office', pdfPaths: [], template: { subject: 'Legacy', body: legacyBody, sections: selectedSections } });
   assert(legacy.html.includes(legacyBody));
   const sections = {
-    ...DEFAULT_SECTIONS,
+    ...selectedSections,
     action: 'Custom action **{{officeName}}**',
     reminder: 'Custom reminder <script>alert(1)</script>',
     deadlines: [{ period: '{{payPeriod}}', deadline: 'Custom deadline <b>literal</b>' }],
@@ -104,6 +105,20 @@ async function main() {
   await mailer.exports.sendBiometricsEmail({ ...options, to: 'test@example.invalid' });
   assert.equal(captured.html, preview.html);
   assert.equal(captured.subject, preview.subject);
+  assert.equal(preview.subject, 'Office <Test> - September 16-30, 2026');
+  assert.equal((preview.html.match(/September 16-30, 2026/g) || []).length, 3);
+  const dated = mailer.exports.renderBiometricsEmail({ ...options, template: { ...template, body: 'Coverage: {{period}} / {{periodStart}} / {{periodEnd}} / {{monthYear}} / {{payPeriod}}' } });
+  assert(dated.html.includes('Coverage: September 16-30, 2026 / September 16, 2026 / September 30, 2026 / September 2026 / 16 - 30'));
+  assert(!dated.html.includes('October 1-15'));
+  assert.equal(getCutoffPeriod({ startDate: '2024-02-16', endDate: '2024-02-29' }).period, 'February 16-29, 2024');
+  assert.equal(getCutoffPeriod({ startDate: '2026-12-16', endDate: '2027-01-15' }).period, 'December 16, 2026 - January 15, 2027');
+  assert.equal(getCutoffPeriod({ startDate: '2026-09-30', endDate: '2026-09-30' }).period, 'September 30-30, 2026');
+  for (const cutoff of [undefined, {}, { startDate: '', endDate: '' }, { startDate: '2026-02-30', endDate: '2026-03-01' }, { startDate: '2026-09-30', endDate: '2026-09-16' }]) {
+    assert.throws(() => parseCutoff(cutoff));
+  }
+  const beforeRejectedSend = captured;
+  await assert.rejects(() => mailer.exports.sendBiometricsEmail({ ...options, to: 'test@example.invalid', template: { ...template, sections: DEFAULT_SECTIONS } }), /cutoff/i);
+  assert.equal(captured, beforeRejectedSend);
   assert(preview.html.includes('Custom action <strong>Office &lt;Test&gt;</strong>'));
   assert(preview.html.includes('Custom reminder &lt;script&gt;'));
   assert(!preview.html.includes('<script>'));
@@ -148,6 +163,9 @@ async function main() {
   const expected = mailer.exports.renderBiometricsEmail({ template, officeName: 'Human Resource Management Office', pdfPaths: ['Office Attendance Data.pdf'], footer: savedFooter });
   assert.deepEqual(await response.json(), expected);
   assert.equal((await previewRoute.POST(request({ ...template, sections: { action: 5 } }))).status, 400);
+  const missingDates = await previewRoute.POST(request({ ...template, sections: DEFAULT_SECTIONS }));
+  assert.equal(missingDates.status, 400);
+  assert.match((await missingDates.json()).error, /cutoff/i);
   delete process.env.EMAIL_ASSETS_BASE_URL;
   const localPreview = await (await previewRoute.POST(request(template))).json();
   assert(localPreview.html.includes('data:image/png;base64,'));
