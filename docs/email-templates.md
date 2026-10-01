@@ -15,6 +15,12 @@ with only PDFs as attachments. Without it, the existing inline image fallback ap
 
 - Templates controls the subject, introduction, action text, reminder, deadline rows,
   acknowledgement, and closing. New subjects use `{{period}}`.
+- Set Cutoff Start Date and Cutoff End Date on each template and save before sending.
+  All date placeholders and the email header use this saved range, not today's date.
+  Missing, invalid, or reversed dates prevent preview/sending, including auto-send.
+  Cutoff dates use the existing sections JSONB column; no additional migration is needed.
+  Existing templates require their dates to be selected once. Update the saved range
+  explicitly for the next cutoff; it will not advance automatically.
 - Existing bodies are preserved as the introduction, without keyword or length-based
   replacement. Review old full-message bodies for duplicated reminders or signatures;
   move that wording to the corresponding fields explicitly. Fixed dates in existing
@@ -26,7 +32,7 @@ with only PDFs as attachments. Without it, the existing inline image fallback ap
   the existing JSONB column; no additional migration is required. Empty account or
   notice fields omit those blocks from the email.
 - Preview renders the unsaved draft through the same function as sending, using a
-  sample office and PDF filename, the current pay period, and the saved shared footer.
+  sample office and PDF filename, the draft's selected cutoff, and the saved shared footer.
   The preview does not save changes or send mail. Its mobile selector uses a 375px frame.
 - Text is escaped before supported bold/italic formatting is applied. The preview is
   displayed in a sandboxed iframe; it cannot run scripts.

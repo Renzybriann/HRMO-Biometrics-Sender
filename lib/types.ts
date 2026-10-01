@@ -34,6 +34,7 @@ export interface EmailTemplate {
 }
 
 export interface EmailSections {
+  cutoff?: { startDate: string; endDate: string };
   action: string;
   reminder: string;
   deadlines: { period: string; deadline: string }[];
